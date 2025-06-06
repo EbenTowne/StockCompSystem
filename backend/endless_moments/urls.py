@@ -19,11 +19,16 @@ from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 urlpatterns = [
+    # Django admin (your single “superuser” logs in here)
     path('admin/', admin.site.urls),
-    #Token urls
+
+    # JWT endpoints (optional)
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    #Register url
-    path('api/register/', include('accounts.urls')),
-    
+
+    # Accounts endpoints (employer & employee registration)
+    path('api/', include('accounts.urls')),
+
+    # DRF browsable API login/logout
+    path('api-auth/', include('rest_framework.urls')),
 ]
