@@ -1,0 +1,22 @@
+# Byte‐compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Django / Python
+/backend/venv/
+/backend/*.sqlite3
+*.log
+*.pot
+
+# If you have a .env for environment variables
+.env
+
+# Node.js (React) dependencies
+/frontend/node_modules/
+
+# Build artifacts
+/frontend/build/
+
+# macOS system files
+.DS_Store
