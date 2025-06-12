@@ -1,33 +1,36 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import UserProfile, Company
+from .models import UserProfile, Company, EmployeeInvite
 
 class EmployerRegistrationSerializer(serializers.ModelSerializer):
     name         = serializers.CharField(write_only=True)
     password     = serializers.CharField(write_only=True)
     company_name = serializers.CharField(write_only=True)
+    unique_id    = serializers.CharField(write_only=True)
 
     class Meta:
-        model = User
-        fields = ['name', 'password', 'email', 'company_name']
+        model  = User
+        fields = ['name', 'password', 'email', 'company_name', 'unique_id']
 
     def create(self, validated_data):
+        uid          = validated_data.pop('unique_id')
         company_name = validated_data.pop('company_name')
         name         = validated_data.pop('name')
         company_obj, _ = Company.objects.get_or_create(name=company_name)
 
         user = User(
-            username=name,
-            first_name=name,
-            email=validated_data.get('email', '')
+            username   = name,
+            first_name = name,
+            email      = validated_data.get('email', '')
         )
         user.set_password(validated_data['password'])
         user.save()
 
         UserProfile.objects.create(
-            user    = user,
-            role    = 'employer',
-            company = company_obj
+            user      = user,
+            unique_id = uid,
+            role      = 'employer',
+            company   = company_obj
         )
         return user
 
@@ -41,38 +44,15 @@ class EmployerRegistrationSerializer(serializers.ModelSerializer):
             'company':   profile.company.name,
         }
 
-
-class EmployeeRegistrationSerializer(serializers.ModelSerializer):
-    name     = serializers.CharField(write_only=True)
-    password = serializers.CharField(write_only=True)
-
+class EmployeeInviteSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
-        fields = ['name', 'password', 'email']
+        model  = EmployeeInvite
+        fields = ['email']
 
-    def create(self, validated_data):
-        name = validated_data.pop('name')
-        user = User(
-            username=name,
-            first_name=name,
-            email=validated_data.get('email', '')
-        )
-        user.set_password(validated_data['password'])
-        user.save()
-        return user
-
-    def to_representation(self, instance):
-        profile          = instance.profile
-        employer_profile = profile.employer.profile if profile.employer else None
-        return {
-            'unique_id':          profile.unique_id,
-            'name':               instance.first_name,
-            'email':              instance.email,
-            'role':               profile.role,
-            'employer_unique_id': employer_profile.unique_id if employer_profile else None,
-            'company':            profile.company.name,
-        }
-
+class EmployeeRegistrationSerializer(serializers.Serializer):
+    name      = serializers.CharField()
+    password  = serializers.CharField(write_only=True)
+    unique_id = serializers.CharField()
 
 class EmployeeListSerializer(serializers.ModelSerializer):
     unique_id = serializers.CharField(read_only=True)
@@ -80,5 +60,5 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     email     = serializers.EmailField(source='user.email', read_only=True)
 
     class Meta:
-        model = UserProfile
+        model  = UserProfile
         fields = ['unique_id', 'name', 'email']
