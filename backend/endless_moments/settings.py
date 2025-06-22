@@ -114,8 +114,14 @@ USE_I18N = True
 
 USE_TZ = True
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
+#DEFINE BACKEND LINK TO EMAIL (TO DISPATCH EMPLOYEE INVITES)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'endlessmomentstestemail@gmail.com' #Change source email account name if needed
+EMAIL_HOST_PASSWORD = 'amyb lsqh jgkk gpiu'   #Change source email password if needed
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/

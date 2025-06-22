@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      color: black;
+      padding: 20px;
+    }
+    .container {
+      max-width: 500px;
+      margin: auto;
+      border: 1px solid white;
+      border-radius: 8px;
+      padding: 20px;
+      background: white;
+    }
+    .button {
+      display: inline-block;
+      padding: 10px 20px;
+      margin-top: 20px;
+      background-color : greenyellow;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>You're Invited!</h2>
+    <p><strong>{{ inviter }}</strong> has invited you to join <strong>{{ company }}</strong> on <em>Endless Moments</em>.</p>
+    <p>Click below to register your account:</p>
+    <a href="{{ link }}" style="
+      display: inline-block;
+      padding: 12px 20px;
+      background-color: green;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      font-weight: bold;
+      text-align: center;
+    ">
+    Accept Invitation
+    </a>
+    <br>
+    <p>If the button does not work, click the following link instead:</p>
+    <p>{{ link }}</p>
+  </div>
+</body>
+</html>
