@@ -41,7 +41,7 @@ class EmployeeInviteView(generics.CreateAPIView):
         subject = f"You've been invited by {self.request.user.username}"
         
         #Open and read html content
-        with open('accounts/inviteEmail.html', 'r') as file:
+        with open('accounts/templates/inviteEmail.html', 'r') as file:
             htmlContent = file.read()
         #Inject user specific content into html
         htmlContent = htmlContent.replace('{{ inviter }}', self.request.user.first_name or self.request.user.username)
