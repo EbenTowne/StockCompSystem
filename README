@@ -1,7 +1,11 @@
+How to run project:
+  - To execute project via terminal, run command "python manage.py runserver"
+  - Click on the localhost url that is generated to enter rest framework
+
 To login as admin, use the following credentials when logging into the /admin url:
-  Username: admin
-  Password: endlessmoments
+  - Username: admin
+  - Password: endlessmoments
 
 The system will dispatch emails from endlessmomentstestemail@gmail.com
-  Username: endlessmomentstestemail@gmail.com
-  Password: endlessmomentsllc
+  - Username: endlessmomentstestemail@gmail.com
+  - Password: endlessmomentsllc
