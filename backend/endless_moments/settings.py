@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    "rest_framework_simplejwt.token_blacklist",
     'accounts',
 ]
 
@@ -120,7 +121,7 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'endlessmomentstestemail@gmail.com' #Change source email account name if needed
-EMAIL_HOST_PASSWORD = 'amyb lsqh jgkk gpiu'   #Change source email password if needed
+EMAIL_HOST_PASSWORD = 'amyb lsqh jgkk gpiu' #Change source email host password if needed (not the same as a standard gmail password)
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Static files (CSS, JavaScript, Images)
@@ -148,4 +149,6 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_TYPES': ('Bearer',),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }

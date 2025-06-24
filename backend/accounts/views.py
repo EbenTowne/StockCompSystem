@@ -2,14 +2,25 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import generics, permissions, status
-from django.urls import reverse
-from django.core.mail import send_mail
-from django.contrib.auth.models import User
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.authentication import SessionAuthentication
+
 from .models import UserProfile, EmployeeInvite
 from .serializers import EmployerRegistrationSerializer, EmployeeInviteSerializer, EmployeeRegistrationSerializer, EmployeeListSerializer
 from .permissions import IsEmployer
+
+from django.contrib.auth.models import User
+from django.urls import reverse
+from django.contrib.auth import logout as django_logout
+
+#Import to implement blacklisting of tokens (logout function)
+from rest_framework_simplejwt.token_blacklist.models import (
+    OutstandingToken, BlacklistedToken
+)
 
 #For email
 from django.core.mail import EmailMultiAlternatives
@@ -128,12 +139,17 @@ class MyEmployeesListView(generics.ListAPIView):
 
 #View to logout of account  
 class LogoutView(APIView):
+    # allow both JWT- and session-authenticated users
+    authentication_classes = [JWTAuthentication, SessionAuthentication]
+    permission_classes     = [IsAuthenticated]
+
     def post(self, request):
-        token = request.COOKIES.get('refresh')
-        if not token:
-            authInfo = request.headers.get('Authorization')
-            if authInfo and authInfo.startswith('Bearer'):
-                token = authInfo.split()[1]
-        if token:
-            RefreshToken(token).blacklist()
-        return Response({"message": "Logged out"})
+        # 1) Blacklist every refresh token we've ever issued to this user
+        for token in OutstandingToken.objects.filter(user=request.user):
+            BlacklistedToken.objects.get_or_create(token=token)
+
+        # 2) If they were logged in via session (browsable API), log them out
+        django_logout(request)
+
+        # 3) Return 204 No Content
+        return Response(status=status.HTTP_204_NO_CONTENT)

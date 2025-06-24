@@ -8,6 +8,6 @@ urlpatterns = [
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/', include('accounts.urls')),
-    path('api/login', include('rest_framework.urls')),
-    path('api/logout', LogoutView.as_view(), name='logout'),
+    path('api/logout/', LogoutView.as_view(), name='logout'),
+    path('api-auth/', include('rest_framework.urls')), #login api
 ]
