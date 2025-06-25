@@ -1,6 +1,6 @@
 // src/components/GuidedTour.tsx
 import React, { useState } from 'react';
-import Joyride, { Step, CallBackProps, STATUS } from 'react-joyride';
+import Joyride, { Step, CallBackProps, STATUS, Status } from 'react-joyride';
 
 const tourSteps: Step[] = [
   {
@@ -23,7 +23,8 @@ const GuidedTour: React.FC = () => {
 
   const handleCallback = (data: CallBackProps) => {
     const { status } = data;
-    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+    const statuses: Status[] = [STATUS.FINISHED, STATUS.SKIPPED];
+    if (statuses.includes(status)) {
       setRun(false);
       localStorage.setItem('onboardingTourDone', 'true');
     }
