@@ -18,18 +18,19 @@ from django.urls import reverse
 from django.contrib.auth import logout as django_logout
 
 #Import to implement blacklisting of tokens (logout function)
-from rest_framework_simplejwt.token_blacklist.models import (
-    OutstandingToken, BlacklistedToken
-)
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
 #For email
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 
+
+
 #View for employer registration
 class EmployerRegistrationView(generics.CreateAPIView):
     serializer_class   = EmployerRegistrationSerializer
     permission_classes = [permissions.AllowAny] #Allow anyone to register as employer
+    authentication_classes = []
 
 #View for inviting employees to employer company
 class EmployeeInviteView(generics.CreateAPIView):
@@ -43,6 +44,7 @@ class EmployeeInviteView(generics.CreateAPIView):
             company  = self.request.user.profile.company,
             employer = self.request.user
         )
+
         #Create link to employee registration
         link = self.request.build_absolute_uri(
             reverse('register-employee-token', args=[str(invite.token)])
@@ -54,6 +56,7 @@ class EmployeeInviteView(generics.CreateAPIView):
         #Open and read html content
         with open('accounts/templates/inviteEmail.html', 'r') as file:
             htmlContent = file.read()
+        
         #Inject user specific content into html
         htmlContent = htmlContent.replace('{{ inviter }}', self.request.user.first_name or self.request.user.username)
         htmlContent = htmlContent.replace('{{ company }}', invite.company.name)
@@ -95,11 +98,11 @@ class EmployeeRegistrationView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
 
         # Generate a unique username
-        base_username = serializer.validated_data['name'].replace(" ", "_")
+        base_username = serializer.validated_data['name']
         username = base_username
         counter = 1
         while User.objects.filter(username=username).exists():
-            username = f"{base_username}_{counter}"
+            username = f"{base_username} {counter}"
             counter += 1
 
         # Create the employee user
@@ -122,11 +125,14 @@ class EmployeeRegistrationView(generics.GenericAPIView):
         invite.is_used = True
         invite.save()
 
-        return Response({
-            'unique_id': profile.unique_id,
-            'name': profile.user.first_name,
-            'email': profile.user.email
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                'unique_id': profile.unique_id,
+                'name': profile.user.first_name,
+                'email': profile.user.email
+            }, 
+            status=status.HTTP_201_CREATED
+        )
 
 #View to show list of employees for an employer
 class MyEmployeesListView(generics.ListAPIView):
@@ -139,17 +145,54 @@ class MyEmployeesListView(generics.ListAPIView):
 
 #View to logout of account  
 class LogoutView(APIView):
-    # allow both JWT- and session-authenticated users
     authentication_classes = [JWTAuthentication, SessionAuthentication]
     permission_classes     = [IsAuthenticated]
 
     def post(self, request):
-        # 1) Blacklist every refresh token we've ever issued to this user
+        #Blacklist (mark as used & prevent reuse) refresh JWT token
         for token in OutstandingToken.objects.filter(user=request.user):
             BlacklistedToken.objects.get_or_create(token=token)
 
-        # 2) If they were logged in via session (browsable API), log them out
+        #If they were logged in via session (browsable API), log them out
+        django_logout(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+class DeleteAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        profile = user.profile
+        role = profile.role
+
+        for token in OutstandingToken.objects.filter(user=user):
+            BlacklistedToken.objects.get_or_create(token=token)
         django_logout(request)
 
-        # 3) Return 204 No Content
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        #If user is an employee, simply delete the account
+        if role == 'employee':
+            user.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        
+        if role == 'employer':
+            company = profile.company
+            employees = UserProfile.objects.filter(company=company, role='employee')
+            
+            #delete each employee tied to employer's company
+            for employee in employees:
+                employee.user.delete()
+
+            #delete company 
+            company.delete()
+
+            #delete employer
+            user.delete()
+
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        
+        #Edge case for users without employer/employee role (shouldn't happen)
+        return Response(
+            {"detail": "Unrecognizable role, cannot delete"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+        
