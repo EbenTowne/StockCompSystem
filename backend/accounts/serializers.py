@@ -55,10 +55,21 @@ class EmployeeRegistrationSerializer(serializers.Serializer):
     unique_id = serializers.CharField()
 
 class EmployeeListSerializer(serializers.ModelSerializer):
-    unique_id = serializers.CharField(read_only=True)
+    unique_id = serializers.CharField(source='profile.unique_id', read_only=True)
     name      = serializers.CharField(source='user.first_name', read_only=True)
     email     = serializers.EmailField(source='user.email', read_only=True)
 
     class Meta:
         model  = UserProfile
         fields = ['unique_id', 'name', 'email']
+
+class ProfileInfoSerializer(serializers.ModelSerializer):
+    unique_id = serializers.CharField(read_only=True)
+    name = serializers.CharField(source='user.first_name', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)
+    company = serializers.CharField(source='company.name', read_only=True)
+    role = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = UserProfile
+        fields = ['unique_id', 'name', 'email', 'company', 'role']

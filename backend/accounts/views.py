@@ -10,7 +10,13 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.authentication import SessionAuthentication
 
 from .models import UserProfile, EmployeeInvite
-from .serializers import EmployerRegistrationSerializer, EmployeeInviteSerializer, EmployeeRegistrationSerializer, EmployeeListSerializer
+from .serializers import (
+    EmployerRegistrationSerializer, 
+    EmployeeInviteSerializer, 
+    EmployeeRegistrationSerializer, 
+    EmployeeListSerializer, 
+    ProfileInfoSerializer
+)
 from .permissions import IsEmployer
 
 from django.contrib.auth.models import User
@@ -142,6 +148,15 @@ class MyEmployeesListView(generics.ListAPIView):
     #Return list of employees tied to specified user
     def get_queryset(self):
         return UserProfile.objects.filter(employer=self.request.user)
+
+#View to show user account info
+class MyAccountInfoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ProfileInfoSerializer
+
+    def get(self, request):
+        serializer = ProfileInfoSerializer(request.user.profile) 
+        return Response(serializer.data)
 
 #View to logout of account  
 class LogoutView(APIView):
