@@ -15,7 +15,8 @@ from .serializers import (
     EmployeeInviteSerializer, 
     EmployeeRegistrationSerializer, 
     EmployeeListSerializer, 
-    ProfileInfoSerializer
+    ProfileInfoSerializer,
+    EmployerListSerializer
 )
 from .permissions import IsEmployer
 
@@ -103,29 +104,24 @@ class EmployeeRegistrationView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Generate a unique username
-        base_username = serializer.validated_data['name']
-        username = base_username
-        counter = 1
-        while User.objects.filter(username=username).exists():
-            username = f"{base_username} {counter}"
-            counter += 1
+        username = serializer.validated_data['username']
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Username already taken"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create the employee user
         user = User(
-            username=username,
-            first_name=serializer.validated_data['name'],
-            email=invite.email
+            username   = username,
+            first_name = serializer.validated_data['name'],
+            email      = invite.email
         )
         user.set_password(serializer.validated_data['password'])
         user.save()
 
         profile = UserProfile.objects.create(
-            user=user,
-            unique_id=serializer.validated_data['unique_id'],
-            role='employee',
-            company=invite.company,
-            employer=invite.employer
+            user      = user,
+            unique_id = serializer.validated_data['unique_id'],
+            role      = 'employee',
+            company   = invite.company,
+            employer  = invite.employer
         )
 
         invite.is_used = True
@@ -134,9 +130,10 @@ class EmployeeRegistrationView(generics.GenericAPIView):
         return Response(
             {
                 'unique_id': profile.unique_id,
-                'name': profile.user.first_name,
-                'email': profile.user.email
-            }, 
+                'username':  user.username,
+                'name':      user.first_name,
+                'email':     user.email
+            },
             status=status.HTTP_201_CREATED
         )
 
@@ -211,3 +208,10 @@ class DeleteAccountView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
         
+
+class AllEmployersView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]  # ✅ Public access for testing
+    serializer_class = EmployerListSerializer
+
+    def get_queryset(self):
+        return User.objects.filter(profile__role='employer')

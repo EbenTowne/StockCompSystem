@@ -7,6 +7,7 @@ from .views import (
     MyEmployeesListView,
     DeleteAccountView,
     MyAccountInfoView,
+    AllEmployersView,
 )
 
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
     path('employees/', MyEmployeesListView.as_view(), name='my-employees'),
     path('deleteAccount/', DeleteAccountView.as_view(), name='delete-account'),
     path('accountInfo/', MyAccountInfoView.as_view(), name='account-info'),
+    path('employers/', AllEmployersView.as_view(), name='all-employers'),
 ]
