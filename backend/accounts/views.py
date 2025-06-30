@@ -8,15 +8,24 @@ from rest_framework import generics, permissions, status
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.authentication import SessionAuthentication
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.core.mail import send_mail
+from django.conf import settings
+
 
 from .models import UserProfile, EmployeeInvite
 from .serializers import (
-    EmployerRegistrationSerializer, 
-    EmployeeInviteSerializer, 
-    EmployeeRegistrationSerializer, 
-    EmployeeListSerializer, 
+    EmployerRegistrationSerializer,
+    EmployeeInviteSerializer,
+    EmployeeRegistrationSerializer,
+    EmployeeListSerializer,
     ProfileInfoSerializer,
-    EmployerListSerializer
+    EmployerListSerializer,
+    ForgotPasswordSerializer,
+    ResetPasswordSerializer,
+    ChangePasswordSerializer,
 )
 from .permissions import IsEmployer
 
@@ -215,3 +224,71 @@ class AllEmployersView(generics.ListAPIView):
 
     def get_queryset(self):
         return User.objects.filter(profile__role='employer')
+    
+    
+
+
+# ────────────────────────────────
+# Forgot‑Password Endpoint
+# ────────────────────────────────
+class ForgotPasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Hide existence – always 200
+            return Response({"detail": "If that e‑mail exists, a reset link has been sent."})
+
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        token  = default_token_generator.make_token(user)
+        reset_link = f"{request.scheme}://{request.get_host()}/reset-password/{uidb64}/{token}"
+
+        send_mail(
+            subject="Reset your password",
+            message=f"Use the link below to set a new password:\n{reset_link}",
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            recipient_list=[email],
+        )
+        return Response({"detail": "If that e‑mail exists, a reset link has been sent."})
+
+# ────────────────────────────────
+# Reset‑Password Endpoint
+# ────────────────────────────────
+class ResetPasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uidb64 = serializer.validated_data["uidb64"]
+        token  = serializer.validated_data["token"]
+
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response({"detail": "Invalid link"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({"detail": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(serializer.validated_data["new_password"])
+        user.save()
+        return Response({"detail": "Password updated successfully"})
+
+# ────────────────────────────────
+# Change‑Password Endpoint
+# ────────────────────────────────
+class ChangePasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Password changed"})
