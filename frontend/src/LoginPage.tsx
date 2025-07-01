@@ -1,18 +1,17 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { login } from './auth';       // ✅ fixed path
+import { login } from './auth';
 
 export default function LoginPage() {
   const nav = useNavigate();
-
-  const [email, setEmail] = useState('');
-  const [password, setPw] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await login(email, password);
+      await login(username, password);
       nav('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed');
@@ -26,19 +25,20 @@ export default function LoginPage() {
       <form onSubmit={submit} className="space-y-4">
         <input
           className="input w-full"
-          type="email"
+          type="text"
+          placeholder="Username"
           required
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
         />
+
         <input
           className="input w-full"
           type="password"
-          required
           placeholder="Password"
+          required
           value={password}
-          onChange={(e) => setPw(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
         />
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -49,16 +49,10 @@ export default function LoginPage() {
       </form>
 
       <div className="flex justify-between mt-4 text-sm">
-        <Link
-          to="/forgot-password"
-          className="text-indigo-600 hover:underline"
-        >
+        <Link to="/forgot-password" className="text-indigo-600 hover:underline">
           Forgot password?
         </Link>
-        <Link
-          to="/register-employer"
-          className="text-indigo-600 hover:underline"
-        >
+        <Link to="/register-employer" className="text-indigo-600 hover:underline">
           Register as employer
         </Link>
       </div>

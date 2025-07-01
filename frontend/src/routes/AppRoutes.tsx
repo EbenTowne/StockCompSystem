@@ -1,36 +1,28 @@
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-import LoginPage            from '../LoginPage';            // ✅ fixed paths
-import RegisterEmployerPage from '../EmployerPage';         // (same file as earlier)
-import ForgotPasswordPage   from '../ForgetPasswordPage';
-import ResetPasswordPage    from '../ResetPasswordPage';
-
-import Dashboard            from '../App';                  // existing component
+// adjust paths up one level into src/
+import LoginPage             from '../LoginPage';
+import RegisterEmployerPage  from '../EmployerPage';
+import ForgotPasswordPage    from '../ForgetPasswordPage';
+import ResetPasswordPage     from '../ResetPasswordPage';
+import DashboardPage         from '../App';
 
 export default function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      {/* public/auth */}
+      <Route path="/login"                     element={<LoginPage />} />
+      <Route path="/register-employer"         element={<RegisterEmployerPage />} />
+      <Route path="/forgot-password"           element={<ForgotPasswordPage />} />
+      <Route path="/reset-password/:uidb64/:token" element={<ResetPasswordPage />} />
 
-      <Route
-        path="/register-employer"
-        element={<RegisterEmployerPage />}
-      />
+      {/* protected */}
+      <Route path="/dashboard"                 element={<DashboardPage />} />
 
-      <Route
-        path="/forgot-password"
-        element={<ForgotPasswordPage />}
-      />
-
-      <Route
-        path="/reset-password/:uidb64/:token"
-        element={<ResetPasswordPage />}
-      />
-
-      <Route path="/dashboard" element={<Dashboard />} />
-
-      {/* catch-all → login */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* redirects */}
+      <Route path="/"       element={<Navigate to="/login"   replace />} />
+      <Route path="*"       element={<Navigate to="/"        replace />} />
     </Routes>
   );
 }

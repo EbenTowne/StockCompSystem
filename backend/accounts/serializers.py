@@ -14,6 +14,7 @@ All classes are imported by accounts.views, so keep their names.
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from .models import UserProfile, Company, EmployeeInvite
 
@@ -21,25 +22,35 @@ from .models import UserProfile, Company, EmployeeInvite
 #  EMPLOYER  –  write + read
 # ────────────────────────────────
 class EmployerRegistrationSerializer(serializers.Serializer):
-    """Used by POST /auth/register-employer/"""
-
     unique_id     = serializers.CharField()
-    username      = serializers.CharField()
+    username      = serializers.CharField(
+        validators=[
+            UniqueValidator(
+                queryset=User.objects.all(),
+                message="This username is already taken."
+            )
+        ]
+    )
     name          = serializers.CharField()
-    email         = serializers.EmailField()
+    email         = serializers.EmailField(
+        validators=[
+            UniqueValidator(
+                queryset=User.objects.all(),
+                message="This email is already registered."
+            )
+        ]
+    )
     company_name  = serializers.CharField()
     password      = serializers.CharField(write_only=True, min_length=8)
 
     def create(self, validated):
         company, _ = Company.objects.get_or_create(name=validated["company_name"])
-
         user = User.objects.create_user(
             username   = validated["username"],
             first_name = validated["name"],
             email      = validated["email"],
             password   = validated["password"],
         )
-
         UserProfile.objects.create(
             user      = user,
             unique_id = validated["unique_id"],

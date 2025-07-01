@@ -246,7 +246,8 @@ class ForgotPasswordView(APIView):
 
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
         token  = default_token_generator.make_token(user)
-        reset_link = f"{request.scheme}://{request.get_host()}/reset-password/{uidb64}/{token}"
+        frontend = settings.FRONTEND_URL.rstrip("/")
+        reset_link = f"{frontend}/reset-password/{uidb64}/{token}"
 
         send_mail(
             subject="Reset your password",
