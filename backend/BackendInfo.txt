@@ -34,7 +34,7 @@ Steps To Handle Postgres Update from SQLite:
 
         $Env:POSTGRES_DB       = 'my_app_db'
         $Env:POSTGRES_USER     = 'postgres'
-        $Env:POSTGRES_PASSWORD = 'YourNewSecurePassword!'
+        $Env:POSTGRES_PASSWORD = 'endlessmoments'
         $Env:POSTGRES_HOST     = 'localhost'
         $Env:POSTGRES_PORT     = '5432'
 
