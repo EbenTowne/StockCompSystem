@@ -38,7 +38,7 @@ Steps To Handle Postgres Update from SQLite:
         $Env:POSTGRES_HOST     = 'localhost'
         $Env:POSTGRES_PORT     = '5432'
 
-    6. Make migrations and run server:
+    6. Make migrations and run server. May not be needed given the migrations were pushed to git repo:
 
         python manage.py migrate
         python manage.py runserver
