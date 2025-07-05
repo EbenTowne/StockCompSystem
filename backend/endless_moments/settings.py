@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from datetime import timedelta
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -85,8 +86,12 @@ CORS_ALLOWED_ORIGINS = [
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE':   'django.db.backends.postgresql',
+        'NAME':     os.environ.get('POSTGRES_DB',       'my_app_db'),
+        'USER':     os.environ.get('POSTGRES_USER',     'postgres'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'endlessmoments'),
+        'HOST':     os.environ.get('POSTGRES_HOST',     'localhost'),
+        'PORT':     os.environ.get('POSTGRES_PORT',     '5432'),
     }
 }
 

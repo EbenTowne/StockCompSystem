@@ -1,3 +1,44 @@
 Admin Login Info:
     Username: admin
     Password: endlessmoments
+
+Steps To Handle Postgres Update from SQLite:
+        1. Download Postgres version 17
+
+    2. Open powershell and run the following commands:
+    
+        python -m venv .venv
+        & '.\.venv\Scripts\Activate.ps1'
+
+    3. Install the following dependencies by entering the following commands into terminal:
+    
+        pip install django djangorestframework django-cors-headers
+        pip install djangorestframework-simplejwt psycopg2-binary
+
+    4. Ensure the database settings and imports  in \backend\endless_moments\settings.py contain the following:
+
+        import os
+
+        DATABASES = {
+            'default': {
+                'ENGINE':   'django.db.backends.postgresql',
+                'NAME':     os.environ.get('POSTGRES_DB',       'my_app_db'),
+                'USER':     os.environ.get('POSTGRES_USER',     'postgres'),
+                'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'YourNewSecurePassword!'),
+                'HOST':     os.environ.get('POSTGRES_HOST',     'localhost'),
+                'PORT':     os.environ.get('POSTGRES_PORT',     '5432'),
+            }
+        }
+
+    5. Enter the following information in powershell terminal to connect to postgres as 'postgres' user
+
+        $Env:POSTGRES_DB       = 'my_app_db'
+        $Env:POSTGRES_USER     = 'postgres'
+        $Env:POSTGRES_PASSWORD = 'YourNewSecurePassword!'
+        $Env:POSTGRES_HOST     = 'localhost'
+        $Env:POSTGRES_PORT     = '5432'
+
+    6. Make migrations and run server:
+
+        python manage.py migrate
+        python manage.py runserver

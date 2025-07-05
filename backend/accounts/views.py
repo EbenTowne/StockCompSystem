@@ -217,9 +217,9 @@ class DeleteAccountView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
         
-
+#DELETE ONCE DONE WITH
 class AllEmployersView(generics.ListAPIView):
-    permission_classes = [permissions.AllowAny]  # ✅ Public access for testing
+    permission_classes = [permissions.AllowAny]  #Public access for testing
     serializer_class = EmployerListSerializer
 
     def get_queryset(self):

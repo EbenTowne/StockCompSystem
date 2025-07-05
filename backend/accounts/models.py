@@ -16,7 +16,7 @@ class Company(models.Model):
 
 class UserProfile(models.Model):
     unique_id = models.CharField(
-        max_length=12,
+        max_length=100,
         unique=False,
         editable=True,
         default=generate_unique_id
