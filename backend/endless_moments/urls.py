@@ -10,4 +10,5 @@ urlpatterns = [
     path('api/', include('accounts.urls')),
     path('api/logout/', LogoutView.as_view(), name='logout'),
     path('api-auth/', include('rest_framework.urls')), #login api
+    path('api/equity/', include('equity.urls')),
 ]

@@ -1,3 +1,8 @@
+Things to install:
+    - pip install python-dateutil
+    - pip install django djangorestframework django-cors-headers
+    - pip install djangorestframework-simplejwt psycopg2-binary
+
 Admin Login Info:
     Username: admin
     Password: endlessmoments

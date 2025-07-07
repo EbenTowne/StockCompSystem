@@ -15,7 +15,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 
 
-from .models import UserProfile, EmployeeInvite
+from .models import UserProfile, EmployeeInvite, Company
 from .serializers import (
     EmployerRegistrationSerializer,
     EmployeeInviteSerializer,
@@ -26,6 +26,7 @@ from .serializers import (
     ForgotPasswordSerializer,
     ResetPasswordSerializer,
     ChangePasswordSerializer,
+    CompanySerializer,
 )
 from .permissions import IsEmployer
 
@@ -39,7 +40,6 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 #For email
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
-
 
 
 #View for employer registration
@@ -293,3 +293,13 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"detail": "Password changed"})
+    
+# ────────────────────────────────
+# View/Change Company Market Cap
+# ────────────────────────────────
+class CompanyDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated, IsEmployer]
+    serializer_class = CompanySerializer
+
+    def get_object(self):
+        return self.request.user.profile.company

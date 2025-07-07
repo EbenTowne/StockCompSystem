@@ -10,7 +10,8 @@ from .views import (
     AllEmployersView,
     ForgotPasswordView, 
     ResetPasswordView, 
-    ChangePasswordView
+    ChangePasswordView,
+    CompanyDetailView,
 )
 
 urlpatterns = [
@@ -24,4 +25,5 @@ urlpatterns = [
     path("auth/forgot-password/", ForgotPasswordView.as_view(), name="forgot-password"),
     path("auth/reset-password/",  ResetPasswordView.as_view(),  name="reset-password"),
     path("auth/change-password/", ChangePasswordView.as_view(), name="change-password"),
+    path('company/', CompanyDetailView.as_view(), name='company-detail'),
 ]

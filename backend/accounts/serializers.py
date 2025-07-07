@@ -19,6 +19,26 @@ from rest_framework.validators import UniqueValidator
 from .models import UserProfile, Company, EmployeeInvite
 
 # ────────────────────────────────
+#  Company  -  write + read
+# ────────────────────────────────
+class CompanySerializer(serializers.ModelSerializer):
+    name = serializers.CharField(read_only=True)
+    total_authorized_shares = serializers.IntegerField()
+    current_fmv = serializers.DecimalField(max_digits=12, decimal_places=2)
+    volatility = serializers.DecimalField(max_digits=5,  decimal_places=2)
+    risk_free_rate = serializers.DecimalField(max_digits=5,  decimal_places=4)
+
+    class Meta:
+        model = Company
+        fields = [
+            'name',
+            'total_authorized_shares',
+            'current_fmv',
+            'volatility',
+            'risk_free_rate',
+        ]
+
+# ────────────────────────────────
 #  EMPLOYER  –  write + read
 # ────────────────────────────────
 class EmployerRegistrationSerializer(serializers.Serializer):
