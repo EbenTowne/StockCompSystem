@@ -1,6 +1,7 @@
-import { useState } from 'react';
+// frontend/src/ResetPasswordPage.tsx
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { resetPassword } from './auth';   // ✅ fixed path
+import { resetPassword } from './auth';
 
 export default function ResetPasswordPage() {
   const { uidb64 = '', token = '' } = useParams();
@@ -8,50 +9,47 @@ export default function ResetPasswordPage() {
 
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
-  const [error, setError] = useState('');
+  const [err, setErr] = useState('');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // make sure both fields match
     if (pw1 !== pw2) {
-      setError('Passwords do not match');
+      setErr('Passwords must match');
       return;
     }
+
     try {
-      await resetPassword(uidb64, token, pw1);
+      // pass both new_password and re_new_password
+      await resetPassword(uidb64, token, pw1, pw2);
       nav('/login');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Something went wrong');
+      setErr(err.response?.data?.detail || 'Something went wrong');
     }
   };
 
   return (
     <div className="mx-auto max-w-sm py-16">
-      <h1 className="text-2xl font-bold mb-6 text-center">
-        Set a new password
-      </h1>
-
+      <h1 className="text-2xl font-bold mb-6 text-center">Set a new password</h1>
+      {err && <p className="text-red-500 mb-4">{err}</p>}
       <form onSubmit={submit} className="space-y-4">
         <input
-          className="input w-full"
           type="password"
-          required
           placeholder="New password"
           value={pw1}
-          onChange={(e) => setPw1(e.target.value)}
+          onChange={e => setPw1(e.target.value)}
+          className="w-full p-2 border rounded"
         />
         <input
-          className="input w-full"
           type="password"
-          required
           placeholder="Confirm new password"
           value={pw2}
-          onChange={(e) => setPw2(e.target.value)}
+          onChange={e => setPw2(e.target.value)}
+          className="w-full p-2 border rounded"
         />
-
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-
-        <button className="btn-primary w-full" type="submit">
-          Update password
+        <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded">
+          Reset Password
         </button>
       </form>
     </div>

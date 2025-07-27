@@ -1,142 +1,106 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { registerEmployer } from './auth'
-
-interface FormState {
-  username:     string
-  name:         string
-  email:        string
-  company_name: string
-  unique_id:    string
-  password:     string
-}
+// frontend/src/EmployerPage.tsx
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { registerEmployer } from './auth';
 
 export default function RegisterEmployerPage() {
-  const nav = useNavigate()
-  const [form, setForm] = useState<FormState>({
-    username:     '',
-    name:         '',
-    email:        '',
+  const nav = useNavigate();
+  const [form, setForm] = useState({
+    username: '',
+    name: '',
+    email: '',
+    password: '',
     company_name: '',
-    unique_id:    '',
-    password:     '',
-  })
-  const [error, setError] = useState<string>('')
-
-  const handle = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm(f => ({ ...f, [key]: e.target.value }))
-    setError('')
-  }
+    unique_id: '',
+  });
+  const [err, setErr] = useState('');
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     try {
-      await registerEmployer(
-        form.username,
-        form.name,
-        form.email,
-        form.password,
-        form.company_name,
-        form.unique_id,
-      )
-      nav('/login')
+      // pass a single object to registerEmployer
+      await registerEmployer({
+        username: form.username,
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        companyName: form.company_name,
+        uniqueId: form.unique_id,
+      });
+      nav('/login');
     } catch (err: any) {
-      const data = err.response?.data
+      const data = err.response?.data;
+      let message = 'Registration failed';
       if (data && typeof data === 'object') {
+        // prefer username or email errors
         if (data.username) {
-          setError(
-            Array.isArray(data.username)
-              ? data.username.join(' ')
-              : String(data.username)
-          )
+          message = Array.isArray(data.username)
+            ? data.username.join(' ')
+            : String(data.username);
         } else if (data.email) {
-          setError(
-            Array.isArray(data.email)
-              ? data.email.join(' ')
-              : String(data.email)
-          )
-        } else if (data.detail) {
-          setError(data.detail)
-        } else {
-          setError('Registration failed')
+          message = Array.isArray(data.email)
+            ? data.email.join(' ')
+            : String(data.email);
         }
-      } else {
-        setError('Registration failed')
       }
+      setErr(message);
     }
-  }
+  };
+
+  const updateField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm({ ...form, [key]: e.target.value });
 
   return (
-    <div className="mx-auto max-w-md py-16">
-      <h1 className="text-2xl font-bold mb-6 text-center">
-        Register as Employer
-      </h1>
-
+    <div className="mx-auto max-w-sm py-16">
+      <h1 className="text-2xl font-bold mb-6 text-center">Register as Employer</h1>
+      {err && <p className="text-red-500 mb-4">{err}</p>}
       <form onSubmit={submit} className="space-y-4">
         <input
-          className="input w-full"
+          type="text"
           placeholder="Username"
-          required
           value={form.username}
-          onChange={handle('username')}
+          onChange={updateField('username')}
+          className="w-full p-2 border rounded"
         />
-
         <input
-          className="input w-full"
-          placeholder="Full name"
-          required
+          type="text"
+          placeholder="Name"
           value={form.name}
-          onChange={handle('name')}
+          onChange={updateField('name')}
+          className="w-full p-2 border rounded"
         />
-
         <input
-          className="input w-full"
           type="email"
           placeholder="Email"
-          required
           value={form.email}
-          onChange={handle('email')}
+          onChange={updateField('email')}
+          className="w-full p-2 border rounded"
         />
-
         <input
-          className="input w-full"
-          placeholder="Company name"
-          required
-          value={form.company_name}
-          onChange={handle('company_name')}
-        />
-
-        <input
-          className="input w-full"
-          placeholder="Unique ID"
-          required
-          value={form.unique_id}
-          onChange={handle('unique_id')}
-        />
-
-        <input
-          className="input w-full"
           type="password"
-          placeholder="Password (min 8 chars)"
-          required
-          minLength={8}
+          placeholder="Password"
           value={form.password}
-          onChange={handle('password')}
+          onChange={updateField('password')}
+          className="w-full p-2 border rounded"
         />
-
-        <button className="btn-primary w-full" type="submit">
-          Create account
+        <input
+          type="text"
+          placeholder="Company Name"
+          value={form.company_name}
+          onChange={updateField('company_name')}
+          className="w-full p-2 border rounded"
+        />
+        <input
+          type="text"
+          placeholder="Unique ID"
+          value={form.unique_id}
+          onChange={updateField('unique_id')}
+          className="w-full p-2 border rounded"
+        />
+        <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded">
+          Register
         </button>
-
-        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
       </form>
-
-      <p className="text-center text-sm mt-4">
-        Already have an account?{' '}
-        <Link to="/login" className="text-indigo-600 hover:underline">
-          Log in
-        </Link>
-      </p>
     </div>
-  )
+  );
 }

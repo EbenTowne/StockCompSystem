@@ -1,28 +1,35 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-
-// adjust paths up one level into src/
-import LoginPage             from '../LoginPage';
-import RegisterEmployerPage  from '../EmployerPage';
-import ForgotPasswordPage    from '../ForgetPasswordPage';
-import ResetPasswordPage     from '../ResetPasswordPage';
-import DashboardPage         from '../App';
+// frontend/src/routes/AppRoutes.tsx
+import React from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import LoginPage from '../LoginPage'
+import ForgetPasswordPage from '../ForgetPasswordPage'
+import ResetPasswordPage from '../ResetPasswordPage'
+import RegisterEmployerPage from '../EmployerPage'
+import DashboardPage from '../pages/DashboardPage'
+import ProtectedRoute from '../components/ProtectedRoute'
 
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* public/auth */}
-      <Route path="/login"                     element={<LoginPage />} />
-      <Route path="/register-employer"         element={<RegisterEmployerPage />} />
-      <Route path="/forgot-password"           element={<ForgotPasswordPage />} />
-      <Route path="/reset-password/:uidb64/:token" element={<ResetPasswordPage />} />
+      {/* public */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgetPasswordPage />} />
+      <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
+      <Route path="/register-employer" element={<RegisterEmployerPage />} />
 
       {/* protected */}
-      <Route path="/dashboard"                 element={<DashboardPage />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* redirects */}
-      <Route path="/"       element={<Navigate to="/login"   replace />} />
-      <Route path="*"       element={<Navigate to="/"        replace />} />
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-  );
+  )
 }

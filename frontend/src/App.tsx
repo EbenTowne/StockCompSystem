@@ -1,31 +1,14 @@
-import React from 'react';  
-import GuidedTour from './components/GuidedTour';  
+// src/App.tsx
+import React from 'react';
+import Header from './components/Header';
+import AppRoutes from './routes/AppRoutes';
 
-const App: React.FC = () => (  
-  <div className="app">  
-    <GuidedTour />  
-
-    <header className="header">  
-      <h1>🚀 My App</h1>  
-    </header>  
-
-    <main className="main">  
-      <section id="dashboard-placeholder" className="section">  
-        <h2>📊 Dashboard</h2>  
-        <p>This is where your metrics will appear.</p>  
-      </section>  
-
-      <section id="profile-icon" className="section">  
-        <h2>👤 Profile</h2>  
-        <p>Update your account details here.</p>  
-      </section>  
-
-      <section id="help-center" className="section">  
-        <h2>❓ Help Center</h2>  
-        <p>Get help, view FAQs, or contact support.</p>  
-      </section>  
-    </main>  
-  </div>  
-);  
-
-export default App;  
+export default function App() {
+  return (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      <main className="container mx-auto p-4">
+        <AppRoutes />
+      </main>
+    </div>
+  );
+}
