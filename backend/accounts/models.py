@@ -9,29 +9,11 @@ def generate_unique_id(length=12):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 class Company(models.Model):
-    name = models.CharField(max_length=200, unique=True)
-    total_authorized_shares = models.PositiveIntegerField(
-        default=0,
-        help_text="Total shares that this company can allocate"
-    )
-    current_fmv = models.DecimalField(
-        max_digits = 12,
-        decimal_places = 2,
-        default = 0,
-        help_text = "Current FMV per share (S)"
-    )
-    volatility = models.DecimalField(
-        max_digits = 5,
-        decimal_places = 2,
-        default = 0,
-        help_text = "Annualized volatility (Sigma)"
-    )
-    risk_free_rate = models.DecimalField(
-        max_digits = 5,
-        decimal_places = 4,
-        default = 0,
-        help_text = "Risk-free rate (r)"
-    )
+    name                 = models.CharField(max_length=200)
+    total_authorized_shares = models.PositiveIntegerField(default=0)
+    current_share_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    risk_free_rate      = models.FloatField(default=0.0, help_text="Annual risk-free rate, e.g. 0.03 for 3%")
+    volatility          = models.FloatField(default=0.0, help_text="Annualized σ, e.g. 0.25 for 25%")
 
     def __str__(self):
         return self.name

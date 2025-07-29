@@ -22,14 +22,18 @@ from .models import UserProfile, Company, EmployeeInvite
 #  Company  -  write + read
 # ────────────────────────────────
 class CompanySerializer(serializers.ModelSerializer):
-    name = serializers.CharField(read_only=True)
+    name                    = serializers.CharField(read_only=True)
     total_authorized_shares = serializers.IntegerField()
-    current_fmv = serializers.DecimalField(max_digits=12, decimal_places=2)
-    volatility = serializers.DecimalField(max_digits=5,  decimal_places=2)
-    risk_free_rate = serializers.DecimalField(max_digits=5,  decimal_places=4)
+    current_fmv             = serializers.DecimalField(
+                                 source='current_share_price',
+                                 max_digits=12,
+                                 decimal_places=2
+                              )
+    volatility              = serializers.DecimalField(max_digits=5,  decimal_places=2)
+    risk_free_rate          = serializers.DecimalField(max_digits=5,  decimal_places=4)
 
     class Meta:
-        model = Company
+        model  = Company
         fields = [
             'name',
             'total_authorized_shares',
