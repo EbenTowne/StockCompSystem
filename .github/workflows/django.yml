@@ -43,4 +43,5 @@ jobs:
         POSTGRES_HOST: localhost
         POSTGRES_PORT: 5432
       run: |
-        python backend/manage.py test
+        cd backend
+        python manage.py test
