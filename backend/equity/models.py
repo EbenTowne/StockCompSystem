@@ -3,28 +3,52 @@ from django.utils import timezone
 from dateutil.relativedelta import relativedelta  # type: ignore
 from accounts.models import Company, UserProfile
 
-class StockClass(models.Model):
+SHARE_TYPE_CHOICES = [
+    ('COMMON', 'Common Stock'),
+    ('PREFERRED', 'Preferred Stock'),
+]
+
+class Series(models.Model):
     company = models.ForeignKey(
         Company,
+        on_delete=models.CASCADE,
+        related_name='series'
+    )
+    name = models.CharField(max_length=255)
+    share_type = models.CharField(max_length=100, choices=SHARE_TYPE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+class StockClass(models.Model):
+    company = models.ForeignKey(
+        'accounts.Company',
         on_delete=models.CASCADE,
         related_name='stock_classes'
     )
     name = models.CharField(max_length=100)
     total_class_shares = models.PositiveIntegerField()
+    series = models.ForeignKey(
+        Series,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='stock_classes'
+    )
 
     def __str__(self):
         return f"{self.name}"
 
     @property
     def shares_allocated(self):
-        return self.equitygrant_set.aggregate(
+        return self.equity_grants.aggregate(
             total=models.Sum('num_shares')
         )['total'] or 0
 
     @property
     def shares_remaining(self):
         return self.total_class_shares - self.shares_allocated
-
 
 class EquityGrant(models.Model):
     VESTING_FREQUENCIES = [
@@ -42,7 +66,8 @@ class EquityGrant(models.Model):
     )
     stock_class = models.ForeignKey(
         StockClass,
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
+        related_name='equity_grants'
     )
 
     num_shares       = models.PositiveIntegerField()
@@ -52,7 +77,15 @@ class EquityGrant(models.Model):
     common_shares    = models.PositiveIntegerField(default=0)
     preferred_shares = models.PositiveIntegerField(default=0)
 
-    strike_price     = models.DecimalField(max_digits=10, decimal_places=2)
+    strike_price     = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    purchase_price   = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Used only for common or preferred shares purchased outright (not options)"
+    )
+
     grant_date       = models.DateField(default=timezone.now)
     vesting_start    = models.DateField(null=True, blank=True)
     vesting_end      = models.DateField(null=True, blank=True)
@@ -83,7 +116,6 @@ class EquityGrant(models.Model):
         return f"{self.user.unique_id}: {self.num_shares}@{self.stock_class.name}"
 
     def save(self, *args, **kwargs):
-        # Auto-calculate cliff_months as full months (rounding down) since vesting_start
         if self.vesting_start:
             today = timezone.now().date()
             if today > self.vesting_start:
@@ -95,36 +127,68 @@ class EquityGrant(models.Model):
 
     def vested_shares(self, on_date=None):
         on_date = on_date or timezone.now().date()
-        if not self.vesting_start or not self.vesting_end:
-            return self.num_shares
-        if on_date < self.vesting_start:
+
+        if self.preferred_shares:
+            return self.preferred_shares
+
+        if not self.vesting_start or on_date < self.vesting_start:
             return 0
-        if on_date >= self.vesting_end:
-            return self.num_shares
-        elapsed = relativedelta(on_date, self.vesting_start)
+
+        if self.vesting_end and on_date >= self.vesting_end:
+            return (
+                self.iso_shares +
+                self.nqo_shares +
+                self.rsu_shares +
+                self.common_shares
+            )
+
+        start = self.vesting_start
+        end   = self.vesting_end
+        elapsed = relativedelta(on_date, start)
+        total   = relativedelta(end, start)
         elapsed_months = elapsed.years * 12 + elapsed.months
-        total = relativedelta(self.vesting_end, self.vesting_start)
-        total_months = total.years * 12 + total.months
-        return int(self.num_shares * elapsed_months / total_months)
+        total_months   = total.years   * 12 + total.months
+        fraction = elapsed_months / total_months if total_months > 0 else 0
+
+        vested_iso    = int(self.iso_shares    * fraction)
+        vested_nqo    = int(self.nqo_shares    * fraction)
+        vested_rsu    = int(self.rsu_shares    * fraction)
+        vested_common = int(self.common_shares * fraction)
+
+        return vested_iso + vested_nqo + vested_rsu + vested_common
 
     def vesting_schedule_breakdown(self):
+        if self.preferred_shares and not (self.vesting_start and self.vesting_end):
+            return [{
+                'date':         self.grant_date.isoformat(),
+                'iso':          0,
+                'nqo':          0,
+                'rsu':          0,
+                'common':       0,
+                'preferred':    self.preferred_shares,
+                'total_vested': self.preferred_shares
+            }]
+
         if not (self.vesting_start and self.vesting_end):
             return []
 
         start = self.vesting_start
-        rd_total = relativedelta(self.vesting_end, start)
+        end   = self.vesting_end
+        rd_total = relativedelta(end, start)
         total_months = rd_total.years * 12 + rd_total.months
+
         schedule = []
-        prev = {k: 0 for k in ('iso', 'nqo', 'rsu', 'common', 'preferred')}
+        prev = {'iso': 0, 'nqo': 0, 'rsu': 0, 'common': 0, 'preferred': 0}
 
         for m in range(1, total_months + 1):
             date_m = start + relativedelta(months=m)
-            cum = lambda shares: int(shares * m / total_months)
-            cum_iso       = cum(self.iso_shares)
-            cum_nqo       = cum(self.nqo_shares)
-            cum_rsu       = cum(self.rsu_shares)
-            cum_common    = cum(self.common_shares)
-            cum_preferred = self.preferred_shares if m >= 1 else 0
+            frac   = m / total_months
+
+            cum_iso       = int(self.iso_shares    * frac)
+            cum_nqo       = int(self.nqo_shares    * frac)
+            cum_rsu       = int(self.rsu_shares    * frac)
+            cum_common    = int(self.common_shares * frac)
+            cum_preferred = self.preferred_shares if self.preferred_shares else 0
 
             vest = {
                 'date':       date_m.isoformat(),
@@ -135,12 +199,13 @@ class EquityGrant(models.Model):
                 'preferred':  cum_preferred - prev['preferred'],
             }
             vest['total_vested'] = sum(vest[k] for k in ('iso','nqo','rsu','common','preferred'))
+
             schedule.append(vest)
             prev.update({
-                'iso': cum_iso,
-                'nqo': cum_nqo,
-                'rsu': cum_rsu,
-                'common': cum_common,
+                'iso':       cum_iso,
+                'nqo':       cum_nqo,
+                'rsu':       cum_rsu,
+                'common':    cum_common,
                 'preferred': cum_preferred,
             })
 
@@ -149,6 +214,8 @@ class EquityGrant(models.Model):
     def get_vesting_status(self, on_date=None):
         if self.preferred_shares > 0:
             return 'Preferred Shares (Immediate Vest)'
+        if self.common_shares > 0 and self.purchase_price:
+            return 'Purchased Common (Immediate Vest)'
         vested = self.vested_shares(on_date)
         if vested == 0:
             return 'Not Vested'

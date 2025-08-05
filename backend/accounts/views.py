@@ -226,8 +226,6 @@ class AllEmployersView(generics.ListAPIView):
         return User.objects.filter(profile__role='employer')
     
     
-
-
 # ────────────────────────────────
 # Forgot‑Password Endpoint
 # ────────────────────────────────

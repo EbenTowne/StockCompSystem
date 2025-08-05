@@ -31,7 +31,11 @@ class UserProfile(models.Model):
     ]
     user     = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     role     = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    company  = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='users')
+    company  = models.ForeignKey(
+        Company, 
+        on_delete=models.CASCADE, 
+        related_name='users'
+    )
     employer = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='employees',
         null=True, blank=True
@@ -50,7 +54,7 @@ class UserProfile(models.Model):
         if self.role == 'employer':
             return f"{display} (Employer of {self.company.name})"
         mgr = self.employer.first_name if self.employer else '—'
-        return f"{display} (Employee of {mgr} at {self.company.name})"
+        return f"{display}"
 
 class EmployeeInvite(models.Model):
     email      = models.EmailField()

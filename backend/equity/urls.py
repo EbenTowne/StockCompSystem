@@ -1,6 +1,8 @@
 from django.urls import path
 from .views import (
     BlackScholesCapTableView,
+    SeriesDetailView,
+    SeriesListCreateView,
     StockClassListCreateView,
     EquityGrantListCreateView,
     EmployeeGrantDetailView,
@@ -23,4 +25,6 @@ urlpatterns = [
     path('employees/<str:unique_id>/grants/', EmployeeGrantDeleteView.as_view(), name='employee-grants-delete'),
     path('grant-ids/<str:unique_id>/', GrantIDListView.as_view(), name='grant-id-list'),
     path('cap-table/bso/', BlackScholesCapTableView.as_view(), name='black-scholes-cap-table'),
+    path('series/', SeriesListCreateView.as_view(), name='series-list'),
+    path('series/<int:pk>/', SeriesDetailView.as_view(), name='series-detail'),
 ]
