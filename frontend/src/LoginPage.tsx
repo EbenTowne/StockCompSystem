@@ -1,5 +1,7 @@
+// src/LoginPage.tsx
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import axios from 'axios';
 import { login } from './auth';
 
 export default function LoginPage() {
@@ -10,10 +12,23 @@ export default function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
     try {
-      await login(username, password);
+      // 1) call login() and pull out the tokens
+      const { data } = await login(username, password);
+
+      // 2) store them however you like
+      localStorage.setItem('access_token', data.access);
+      localStorage.setItem('refresh_token', data.refresh);
+
+      // 3) configure axios for all future calls
+      axios.defaults.headers.common['Authorization'] = `Bearer ${data.access}`;
+
+      // 4) redirect on success
       nav('/dashboard');
     } catch (err: any) {
+      // show the message from DRF or a fallback
       setError(err.response?.data?.detail || 'Login failed');
     }
   };
