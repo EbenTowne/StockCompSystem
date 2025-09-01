@@ -61,7 +61,9 @@ class EquityGrantSerializer(serializers.ModelSerializer):
         queryset=UserProfile.objects.all(), slug_field='unique_id', write_only=True
     )
     stock_class = serializers.SlugRelatedField(
-        queryset=StockClass.objects.all(), slug_field='name', write_only=True
+        queryset=StockClass.objects.none(),  # set at runtime
+        slug_field='name',
+        write_only=True,
     )
     vesting_frequency = serializers.ChoiceField(
         choices=EquityGrant.VESTING_FREQUENCIES,
@@ -80,6 +82,13 @@ class EquityGrantSerializer(serializers.ModelSerializer):
             'vesting_start', 'vesting_end',
             'cliff_months', 'vesting_frequency', 'shares_per_period',
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'profile'):
+            company = request.user.profile.company
+            self.fields['stock_class'].queryset = StockClass.objects.filter(company=company)
 
     def validate(self, data):
         total = data.get('num_shares', getattr(self.instance, 'num_shares', 0))

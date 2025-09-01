@@ -173,61 +173,82 @@ class CapTableView(APIView):
         })
     
 class BlackScholesCapTableView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
     def get(self, request):
         company = request.user.profile.company
-        cap = company.total_authorized_shares
+        cap = company.total_authorized_shares or 0
         rows = []
         today = timezone.now().date()
 
-        all_grants = EquityGrant.objects.filter(user__company=company, user__role='employee')
+        grants = (
+            EquityGrant.objects
+            .filter(user__company=company, user__role='employee')
+            .select_related('user__user', 'stock_class__series')
+        )
 
-        for grant in all_grants:
+        for grant in grants:
             user = grant.user
-            total = grant.num_shares
-            pct = round((total / cap) * 100, 2) if cap else 0.0
+            total = grant.num_shares or 0
+            ownership_pct = round((total / cap) * 100, 2) if cap else 0.0
 
-            if grant.preferred_shares:
-                tot_m = rem_m = cliff = 0
+            # --- vesting metrics (keep simple & safe) ---
+            if (grant.preferred_shares or 0) > 0:
+                total_vesting_months = remaining_vesting_months = cliff_months = 0
+                vesting_status = 'Preferred Shares (Immediate Vest)'
             elif grant.vesting_start and grant.vesting_end:
-                rd = relativedelta(grant.vesting_end, grant.vesting_start)
-                tot_m = rd.years * 12 + rd.months
-                rem = relativedelta(grant.vesting_end, today)
-                rem_m = max(rem.years * 12 + rem.months, 0)
-                cliff = grant.cliff_months
+                rd_total = relativedelta(grant.vesting_end, grant.vesting_start)
+                total_vesting_months = rd_total.years * 12 + rd_total.months
+                rd_rem = relativedelta(grant.vesting_end, today)
+                remaining_vesting_months = max(rd_rem.years * 12 + rd_rem.months, 0)
+                cliff_months = getattr(grant, 'cliff_months', 0)
+                vesting_status = getattr(grant, 'get_vesting_status', lambda: 'Vesting')()
             else:
-                tot_m = rem_m = cliff = 0
+                total_vesting_months = remaining_vesting_months = cliff_months = 0
+                vesting_status = 'Not Vested'
 
-            bso_fmv = bs_call_price(
-                S=company.current_share_price,
-                K=float(grant.strike_price),
-                T=1,
-                r=company.risk_free_rate,
-                sigma=company.volatility
-            )
+            # --- BSO inputs (guard against None) ---
+            is_option = (grant.iso_shares or 0) + (grant.nqo_shares or 0) > 0
+
+            S = float(company.current_share_price or 0)
+            K = float(grant.strike_price or 0)
+            r = float(company.risk_free_rate or 0)
+            sigma = float(company.volatility or 0)
+            T = 1  # years; adjust if you store an explicit horizon
+
+            if is_option and S > 0 and K > 0 and sigma > 0:
+                try:
+                    bso_fmv = bs_call_price(S=S, K=K, T=T, r=r, sigma=sigma)
+                except Exception:
+                    bso_fmv = 0.0
+            elif (grant.rsu_shares or 0) > 0:
+                # RSUs are not options; per-share fair value ≈ current FMV
+                bso_fmv = S
+            else:
+                # Not an option and not an RSU (e.g., preferred/common) → N/A
+                # Keep 0.0 to satisfy serializers.FloatField()
+                bso_fmv = 0.0
 
             rows.append({
                 'unique_id': user.unique_id,
-                'name': user.user.first_name,
-                'stock_class': grant.stock_class.name,
+                'name': getattr(user.user, 'first_name', '') or user.user.username,
+                'stock_class': grant.stock_class.name if grant.stock_class else "N/A",
                 'isos': grant.iso_shares,
                 'nqos': grant.nqo_shares,
                 'rsus': grant.rsu_shares,
                 'common_shares': grant.common_shares,
                 'preferred_shares': grant.preferred_shares,
                 'total_shares': total,
-                'ownership_pct': pct,
-                'total_vesting_months': tot_m,
-                'remaining_vesting_months': rem_m,
-                'cliff_months': cliff,
-                'vesting_status': grant.get_vesting_status(),
+                'ownership_pct': ownership_pct,
+                'total_vesting_months': total_vesting_months,
+                'remaining_vesting_months': remaining_vesting_months,
+                'cliff_months': cliff_months,
+                'vesting_status': vesting_status,
                 'strike_price': grant.strike_price,
-                'purchase_price': grant.purchase_price,
-                'grant_obj': grant,
-                'current_share_price': float(company.current_share_price),
-                'risk_free_rate': float(company.risk_free_rate),
-                'volatility': float(company.volatility),
+                'grant_obj': grant,  # required so serializer can compute series_name
+                'current_share_price': S,
+                'risk_free_rate': r,
+                'volatility': sigma,
                 'bso_fmv': bso_fmv,
             })
 
