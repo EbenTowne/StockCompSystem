@@ -12,6 +12,8 @@ from .views import (
     EmployeeGrantDeleteView,
     StockClassDetailView,
     GrantIDListView,
+    CompanyMonthlyExpensesView,
+    GrantMonthlyExpensesView,
 )
 
 urlpatterns = [
@@ -27,4 +29,6 @@ urlpatterns = [
     path('cap-table/bso/', BlackScholesCapTableView.as_view(), name='black-scholes-cap-table'),
     path('series/', SeriesListCreateView.as_view(), name='series-list'),
     path('series/<int:pk>/', SeriesDetailView.as_view(), name='series-detail'),
+    path('expenses/', CompanyMonthlyExpensesView.as_view(), name='company-monthly-expenses'),
+    path('employees/<str:unique_id>/grants/<int:grant_id>/monthly-expenses/', GrantMonthlyExpensesView.as_view(), name='grant-monthly-expenses'),
 ]
