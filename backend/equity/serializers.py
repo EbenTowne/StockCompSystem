@@ -222,7 +222,10 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
     vesting_start = serializers.DateField()
     vesting_end = serializers.DateField()
     cliff_months = serializers.SerializerMethodField()
-    strike_price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    vesting_start = serializers.DateField(required=False, allow_null=True)
+    vesting_end = serializers.DateField(required=False, allow_null=True)
+    strike_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
+    purchase_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
     vesting_frequency = serializers.ChoiceField(choices=EquityGrant.VESTING_FREQUENCIES)
     shares_per_period = serializers.SerializerMethodField()
     vested_shares = serializers.SerializerMethodField()
@@ -238,7 +241,7 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
             'num_shares', 'iso_shares', 'nqo_shares', 'rsu_shares',
             'common_shares', 'preferred_shares',
             'vesting_start', 'vesting_end', 'cliff_months',
-            'strike_price', 'vesting_frequency', 'shares_per_period',
+            'strike_price', 'purchase_price', 'vesting_frequency', 'shares_per_period',
             'vested_shares', 'unvested_shares',
             'vesting_period_months', 'remaining_vesting_months', 'vesting_status',
         ]
