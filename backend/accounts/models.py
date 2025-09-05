@@ -31,6 +31,8 @@ class UserProfile(models.Model):
     ]
     user     = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     role     = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    email_verified = models.BooleanField(default=False)  
+    two_factor_enabled = models.BooleanField(default=False)  
     company  = models.ForeignKey(
         Company, 
         on_delete=models.CASCADE, 
