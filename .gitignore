@@ -21,3 +21,6 @@ __pycache__/
 # macOS system files
 .DS_Store
 node_modules
+
+# local env
+backend/.venv/
