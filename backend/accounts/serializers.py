@@ -80,6 +80,8 @@ class EmployerRegistrationSerializer(serializers.Serializer):
             unique_id = validated["unique_id"],
             role      = "employer",
             company   = company,
+            email_verified=False,        
+            two_factor_enabled=False,   
         )
         return user
 
