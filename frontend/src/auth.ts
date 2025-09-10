@@ -1,52 +1,61 @@
 // frontend/src/auth.ts
-
-import axios from 'axios';
+import axios from "axios";
 
 /**
-
+ * API base (your JWT/REST endpoints, includes /api)
+ * Ex: http://127.0.0.1:8000/api
  */
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api';
+export const API_BASE =
+  import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
-/** POST { username, password } → { access, refresh } */
+/**
+ * Backend base **without** /api — used for Django's server-rendered pages
+ * Ex: http://127.0.0.1:8000
+ */
+export const BACKEND_BASE =
+  import.meta.env.VITE_BACKEND_URL ?? API_BASE.replace(/\/api\/?$/, "");
+
+/* ----------------------------------------------------------------------------
+ * Auth helpers
+ * --------------------------------------------------------------------------*/
+
+type JwtPair = { access: string; refresh: string };
+type AccessOnly = { access: string };
+
 export const login = (username: string, password: string) =>
-  axios.post<{ access: string; refresh: string }>(
-    `${API_BASE}/token/`,
-    { username, password }
-  );
+  axios.post<JwtPair>(`${API_BASE}/token/`, { username, password });
 
-/** POST { refresh } → { access } */
 export const refreshToken = (refresh: string) =>
-  axios.post<{ access: string }>(
-    `${API_BASE}/token/refresh/`,
-    { refresh }
-  );
+  axios.post<AccessOnly>(`${API_BASE}/token/refresh/`, { refresh });
 
-/** POST { email } → send password‐reset link */
+/** Optionally handy for attaching the bearer token automatically */
+const authHeaders = () => {
+  const token = localStorage.getItem("access");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+/* ----------------------------------------------------------------------------
+ * Password flows
+ * --------------------------------------------------------------------------*/
+
 export const forgotPassword = (email: string) =>
-  axios.post(
-    `${API_BASE}/auth/forgot-password/`,
-    { email }
-  );
+  axios.post(`${API_BASE}/auth/forgot-password/`, { email });
 
-/**
- * POST { uid, token, new_password, re_new_password }
- * → actually reset the password
- */
 export const resetPassword = (
   uid: string,
   token: string,
   new_password: string,
   re_new_password: string
 ) =>
-  axios.post(
-    `${API_BASE}/auth/reset-password/${uid}/${token}/`,
-    { new_password, re_new_password }
-  );
+  axios.post(`${API_BASE}/auth/reset-password/${uid}/${token}/`, {
+    new_password,
+    re_new_password,
+  });
 
-/**
- * POST employer sign‐up:
- * { username, name, email, password, companyName, uniqueId }
- */
+/* ----------------------------------------------------------------------------
+ * Registration
+ * --------------------------------------------------------------------------*/
+
 export const registerEmployer = (data: {
   username: string;
   name: string;
@@ -54,8 +63,45 @@ export const registerEmployer = (data: {
   password: string;
   companyName: string;
   uniqueId: string;
-}) =>
-  axios.post(
-    `${API_BASE}/register/employer/`,
-    data
+}) => axios.post(`${API_BASE}/register/employer/`, data);
+
+/* ----------------------------------------------------------------------------
+ * Account info (used to check if 2FA enabled)
+ * --------------------------------------------------------------------------*/
+
+export const getAccountInfo = (accessToken: string) =>
+  axios.get(`${API_BASE}/accountInfo/`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+/* ----------------------------------------------------------------------------
+ * Two-factor (TOTP) helpers
+ *   If your backend endpoints are different, adjust the URLs below.
+ * --------------------------------------------------------------------------*/
+
+export type Start2FAResponse = { otpauth_url: string; secret?: string };
+export type Verify2FAResponse = { detail?: string };
+
+export const startTwoFactorSetup = () =>
+  axios.post<Start2FAResponse>(
+    `${API_BASE}/2fa/start/`,
+    {},
+    { headers: authHeaders() }
   );
+
+export const verifyTwoFactorToken = (code: string) =>
+  axios.post<Verify2FAResponse>(
+    `${API_BASE}/2fa/verify/`,
+    { code },
+    { headers: authHeaders() }
+  );
+
+/* ----------------------------------------------------------------------------
+ * Server-rendered 2FA portal & login URL (Django templates)
+ * --------------------------------------------------------------------------*/
+
+export const openTwoFactorPortal = () => {
+  window.open(`${BACKEND_BASE}/account/two_factor/`, "_blank", "noopener");
+};
+
+export const twoFactorLoginUrl = () => `${BACKEND_BASE}/account/login/`;
