@@ -86,6 +86,7 @@ WSGI_APPLICATION = 'endless_moments.wsgi.application'
 
 CORS_ALLOWED_ORIGINS = [
   "http://localhost:3000",
+  "http://localhost:5173",
 ]
 
 # Database
@@ -94,11 +95,11 @@ CORS_ALLOWED_ORIGINS = [
 DATABASES = {
     'default': {
         'ENGINE':   'django.db.backends.postgresql',
-        'NAME':     os.environ.get('POSTGRES_DB',       'my_app_db'),
-        'USER':     os.environ.get('POSTGRES_USER',     'postgres'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'endlessmoments'),
-        'HOST':     os.environ.get('POSTGRES_HOST',     'localhost'),
-        'PORT':     os.environ.get('POSTGRES_PORT',     '5432'),
+        'NAME':     "test_psql",       
+        'USER':     'postgres',
+        'PASSWORD': 'endlessmoments',
+        'HOST':     'database-1.cwv0648gmaox.us-east-1.rds.amazonaws.com',
+        'PORT':     '5432',
     }
 }
 
@@ -171,4 +172,7 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
+LOGIN_URL = 'two_factor:login'
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"  # or wherever you want after login
 FRONTEND_URL = "http://localhost:3000"

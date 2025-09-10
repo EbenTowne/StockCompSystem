@@ -1,12 +1,17 @@
+# endless_moments/urls.py
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from accounts.views import LogoutView
-from two_factor.urls import urlpatterns as two_factor_urlpatterns
+from two_factor import urls as tf_urls
+two_factor_patterns = tf_urls.core + tf_urls.profile + tf_urls.plugin_urlpatterns
 
 urlpatterns = [
     path('admin/', admin.site.urls),
 
+    # ✅ all 2FA routes
+
+    path('', include((two_factor_patterns, 'two_factor'), namespace='two_factor')),
     # JWT auth
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
