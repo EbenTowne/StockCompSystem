@@ -9,6 +9,9 @@ from .models         import Series, StockClass, EquityGrant
 def _normal_cdf(x: float) -> float:
     return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
 
+# ────────────────────────────────
+#  HELPER FUNCTION TO COMPUTE BLACK SCHOLES
+# ────────────────────────────────
 def bs_call_price(S: float, K: float, T: float, r: float, sigma: float) -> float:
     S = float(S)
     K = float(K)
@@ -24,11 +27,17 @@ def bs_call_price(S: float, K: float, T: float, r: float, sigma: float) -> float
     d2 = d1 - sigma * math.sqrt(T)
     return S * _normal_cdf(d1) - K * math.exp(-r * T) * _normal_cdf(d2)
 
+# ────────────────────────────────
+#  CREATE SERIES FOR COMPANY CLASSES
+# ────────────────────────────────
 class SeriesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Series
         fields = ['id', 'name', 'share_type', 'created_at']
 
+# ────────────────────────────────
+#  CREATE CLASSES FOR STOCK ALLOC
+# ────────────────────────────────
 class StockClassSerializer(serializers.ModelSerializer):
     shares_allocated = serializers.IntegerField(read_only=True)
     shares_remaining = serializers.IntegerField(read_only=True)
@@ -56,6 +65,9 @@ class StockClassSerializer(serializers.ModelSerializer):
         return value
         return value
 
+# ────────────────────────────────
+#  CREATE STOCK OPTION / GRANT
+# ────────────────────────────────
 class EquityGrantSerializer(serializers.ModelSerializer):
     user = serializers.SlugRelatedField(
         queryset=UserProfile.objects.all(), slug_field='unique_id', write_only=True
@@ -161,6 +173,9 @@ class EquityGrantSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         return super().create(validated_data)
 
+# ────────────────────────────────
+#  GENERATE CAP TABLE FOR ALL GRANT INFO
+# ────────────────────────────────
 class CapTableSerializer(serializers.Serializer):
     unique_id = serializers.CharField()
     name = serializers.CharField()
@@ -174,8 +189,6 @@ class CapTableSerializer(serializers.Serializer):
     total_shares = serializers.IntegerField()
     strike_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
     ownership_pct = serializers.FloatField()
-
-    # ← change these two from DateField to SerializerMethodField
     vesting_start = serializers.SerializerMethodField()
     vesting_end   = serializers.SerializerMethodField()
 
@@ -214,6 +227,9 @@ class CapTableSerializer(serializers.Serializer):
             return grant.stock_class.series.name
         return "N/A"
 
+# ────────────────────────────────
+#  GENERATE DETAILED INFO FOR SPECIFIC GRANT
+# ────────────────────────────────
 class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
     unique_id = serializers.CharField(source='user.unique_id', read_only=True)
     name = serializers.CharField(source='user.user.first_name', read_only=True)
@@ -351,7 +367,9 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
             return 'Fully Vested'
         return 'Vesting'
 
-
+# ────────────────────────────────
+#  GENERATE CAP TABLE CONTAINING BLACK SCHOLES INFO
+# ────────────────────────────────
 class BlackScholesCapTableSerializer(serializers.Serializer):
     unique_id = serializers.CharField()
     name = serializers.CharField()
@@ -364,8 +382,6 @@ class BlackScholesCapTableSerializer(serializers.Serializer):
     total_shares = serializers.IntegerField()
     strike_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
     ownership_pct = serializers.FloatField()
-
-    # already correct here, just make sure the helpers match
     vesting_start = serializers.SerializerMethodField()
     vesting_end   = serializers.SerializerMethodField()
     cliff_months = serializers.SerializerMethodField()

@@ -22,6 +22,7 @@ from .serializers                import (
     bs_call_price
 )
 
+#Allow creation of stock series
 class SeriesListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     serializer_class = SeriesSerializer
@@ -30,14 +31,16 @@ class SeriesListCreateView(generics.ListCreateAPIView):
         return Series.objects.filter(company=self.request.user.profile.company)
 
     def perform_create(self, serializer):
-        # Automatically assign the company of the logged-in employer
+        #Create series and automatically link company object
         serializer.save(company=self.request.user.profile.company)
-    
+
+#Allow user to view details of series    
 class SeriesDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     serializer_class = SeriesSerializer
     queryset = Series.objects.all()
 
+    #On delete destroy object
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         series_name = instance.name
@@ -47,6 +50,7 @@ class SeriesDetailView(generics.RetrieveUpdateDestroyAPIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
+#Allow creation of stock classes
 class StockClassListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     serializer_class = StockClassSerializer
@@ -54,6 +58,7 @@ class StockClassListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return self.request.user.profile.company.stock_classes.all()
 
+    #Create series and automatically link company object
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.profile.company)
 
@@ -66,6 +71,7 @@ class StockClassListCreateView(generics.ListCreateAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+#Allow details for stock classes to be viewed
 class StockClassDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     serializer_class = StockClassSerializer
@@ -74,6 +80,7 @@ class StockClassDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return self.request.user.profile.company.stock_classes.all()
 
+#Allow creation of an equity option/grant
 class EquityGrantListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     serializer_class = EquityGrantSerializer
@@ -93,6 +100,7 @@ class EquityGrantListCreateView(generics.ListCreateAPIView):
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+#Allow deletion of employee grant
 class EmployeeGrantDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     serializer_class = EmployeeGrantDetailSerializer
@@ -105,6 +113,7 @@ class EmployeeGrantDetailView(generics.RetrieveUpdateDestroyAPIView):
             user__unique_id=self.kwargs['unique_id']
         )
 
+#Allow user to view cap-table for stock allocation
 class CapTableView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
@@ -127,6 +136,7 @@ class CapTableView(APIView):
         rows = []
         today = timezone.now().date()
 
+        #print out all information pertaining to each grant
         for grant in all_grants:
             user = grant.user
             total = grant.num_shares
@@ -143,6 +153,7 @@ class CapTableView(APIView):
             else:
                 tot_m = rem_m = cliff = 0
 
+            #Save Json response structure with following fields
             rows.append({
                 "unique_id": user.unique_id,
                 "name": user.user.first_name or user.user.username,
@@ -166,6 +177,7 @@ class CapTableView(APIView):
                 "grant_obj": grant,
             })
 
+        #Summarize table
         return Response({
             "market_cap": cap,
             "allocated_market_cap": allocated,
@@ -173,7 +185,8 @@ class CapTableView(APIView):
             "class_allocations": class_allocs,
             "rows": CapTableSerializer(rows, many=True).data
         })
-    
+
+#Allow the generation of a cap table containing black scholes information
 class BlackScholesCapTableView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
@@ -189,12 +202,13 @@ class BlackScholesCapTableView(APIView):
             .select_related('user__user', 'stock_class__series')
         )
 
+        #print out all information pertaining to each grant
         for grant in grants:
             user = grant.user
             total = grant.num_shares or 0
             ownership_pct = round((total / cap) * 100, 2) if cap else 0.0
 
-            # --- vesting metrics (keep simple & safe) ---
+            #metrics to measure vesting metrics
             if (grant.preferred_shares or 0) > 0:
                 total_vesting_months = remaining_vesting_months = cliff_months = 0
                 vesting_status = 'Preferred Shares (Immediate Vest)'
@@ -209,28 +223,29 @@ class BlackScholesCapTableView(APIView):
                 total_vesting_months = remaining_vesting_months = cliff_months = 0
                 vesting_status = 'Not Vested'
 
-            # --- BSO inputs (guard against None) ---
+            #Black scholes input (total iso + nqo shares)
             is_option = (grant.iso_shares or 0) + (grant.nqo_shares or 0) > 0
 
-            S = float(company.current_share_price or 0)
-            K = float(grant.strike_price or 0)
-            r = float(company.risk_free_rate or 0)
-            sigma = float(company.volatility or 0)
-            T = 1  # years; adjust if you store an explicit horizon
+            S = float(company.current_share_price or 0) #Market Value per share
+            K = float(grant.strike_price or 0) #Strike Price
+            r = float(company.risk_free_rate or 0) #Risk Free Rate
+            sigma = float(company.volatility or 0) #Volatility
+            T = 1  #Time value
 
+            #If ISO/NQO options determine bso call price
             if is_option and S > 0 and K > 0 and sigma > 0:
                 try:
                     bso_fmv = bs_call_price(S=S, K=K, T=T, r=r, sigma=sigma)
                 except Exception:
                     bso_fmv = 0.0
+            #If RSU option use market value as call price
             elif (grant.rsu_shares or 0) > 0:
-                # RSUs are not options; per-share fair value ≈ current FMV
                 bso_fmv = S
+            #If Common or Preferred option set call price to 0
             else:
-                # Not an option and not an RSU (e.g., preferred/common) → N/A
-                # Keep 0.0 to satisfy serializers.FloatField()
                 bso_fmv = 0.0
 
+            #Save Json response structure with following fields
             rows.append({
                 'unique_id': user.unique_id,
                 'name': getattr(user.user, 'first_name', '') or user.user.username,
@@ -258,7 +273,8 @@ class BlackScholesCapTableView(APIView):
             'market_cap': cap,
             'rows': BlackScholesCapTableSerializer(rows, many=True).data,
         })
-    
+
+#Generate the vesting schedule for individual grant/option
 class GrantVestingScheduleView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     def get(self, request, unique_id, grant_id):
@@ -273,6 +289,7 @@ class GrantVestingScheduleView(APIView):
             'schedule': grant.vesting_schedule_breakdown()
         })
     
+#Generate the vesting schedule for all grants pertaining to a company
 class AllGrantVestingScheduleView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     def get(self, request):
@@ -290,6 +307,7 @@ class AllGrantVestingScheduleView(APIView):
                     })
         return Response({'schedules': schedules})
 
+#Allow option to delete grants
 class EmployeeGrantDeleteView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
@@ -313,7 +331,8 @@ class EmployeeGrantDeleteView(APIView):
         )
         count, _ = EquityGrant.objects.filter(user=profile).delete()
         return Response({'deleted_grants': count}, status=status.HTTP_200_OK)
-    
+
+#Allow users to find the ids of grants associated with an employee id
 class GrantIDListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -332,19 +351,12 @@ class GrantIDListView(APIView):
             { 'grant_ids': grant_ids },
             status=status.HTTP_200_OK
         )
-    
-class GrantMonthlyExpensesView(APIView):
-    """
-    Per-grant straight-line monthly expense from the current month through the last
-    month this grant recognizes expense.
 
-    Options (ISO/NQO): Black-Scholes value * option count, amortized over vesting months.
-    RSU/Common with schedule: FMV * shares, amortized over vesting months.
-    Immediate-vest (e.g., Preferred w/o schedule or purchased Common): full amount in grant month.
-    """
+#Show the monthly expenses for individual grant 
+class GrantMonthlyExpensesView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
-    # --- month helpers ---
+    #HELPER FUNCTIONS
     @staticmethod
     def _first_of_month(d: date) -> date:
         return date(d.year, d.month, 1)
@@ -490,10 +502,6 @@ class GrantMonthlyExpensesView(APIView):
         })
     
 class CompanyMonthlyExpensesView(APIView):
-    """
-    Company-wide straight-line monthly expenses from the current month through the
-    latest month any grant recognizes expense.
-    """
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
     def get(self, request):
@@ -615,16 +623,7 @@ class CompanyMonthlyExpensesView(APIView):
             "grand_total_within_window": round(grand, 2),
         })
 
-
-# ------------------------------------------------------------
-# Optional: Black-Scholes “cap table” preview for all grants
-# (Safe against None/invalid inputs)
-# ------------------------------------------------------------
 class BlackScholesCapTableView(APIView):
-    """
-    Returns a simple list of grants with computed Black–Scholes per-option value and totals.
-    Useful for debugging inputs and ensuring no NoneType/float conversion errors.
-    """
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
     def get(self, request):

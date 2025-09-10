@@ -3,8 +3,12 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from accounts.views import LogoutView
+<<<<<<< Updated upstream
 from two_factor import urls as tf_urls
 two_factor_patterns = tf_urls.core + tf_urls.profile + tf_urls.plugin_urlpatterns
+=======
+#from two_factor.urls import urlpatterns as two_factor_urlpatterns
+>>>>>>> Stashed changes
 
 urlpatterns = [
     path('admin/', admin.site.urls),
