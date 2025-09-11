@@ -18,7 +18,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: endlessmoments
-          POSTGRES_DB: my_app_db
+          POSTGRES_DB: test_psql
         ports:
         - 5432:5432
         options: >-
@@ -43,10 +43,10 @@ jobs:
     - name: Run Tests
       working-directory: backend
       env:
-        POSTGRES_DB: my_app_db
+        POSTGRES_DB: test_psql
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: endlessmoments
-        POSTGRES_HOST: localhost
+        POSTGRES_HOST: database-1.cwv0648gmaox.us-east-1.rds.amazonaws.com
         POSTGRES_PORT: 5432
       run: |
         python manage.py check
