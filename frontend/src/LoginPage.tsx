@@ -1,11 +1,12 @@
-// src/LoginPage.tsx
-import { useState } from 'react';
+import { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { login } from './auth';
+import { getAccountInfo } from './auth';
+import { AuthContext } from './context/AuthContext'; // use the existing context (no changes to the file)
 
 export default function LoginPage() {
   const nav = useNavigate();
+  const { signIn } = useContext(AuthContext)!; // signIn comes from your original AuthContext
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -15,21 +16,29 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // 1) call login() and pull out the tokens
-      const { data } = await login(username, password);
+      // 1) Use context signIn so AuthContext.user is set (ProtectedRoute will allow entry)
+      await signIn(username, password);  // tokens saved as accessToken/refreshToken in your context
 
-      // 2) store them however you like
-      localStorage.setItem('access_token', data.access);
-      localStorage.setItem('refresh_token', data.refresh);
+      // 2) Configure axios using the token your context stored
+      const access = localStorage.getItem('accessToken'); // matches your AuthContext storage
+      if (access) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${access}`;
+      }
 
-      // 3) configure axios for all future calls
-      axios.defaults.headers.common['Authorization'] = `Bearer ${data.access}`;
+      // 3) Fetch account info to decide destination (employee vs employer)
+      try {
+        const acct = await getAccountInfo(access || '');
+        const role: string =
+          (acct.data?.role as string) ??
+          (acct.data?.is_employer ? 'employer' : 'employee');
 
-      // 4) redirect on success
-      nav('/dashboard');
+        nav(role === 'employee' ? '/employee/dashboard' : '/dashboard');
+      } catch {
+        // If /accountInfo/ fails, default to employer dashboard
+        nav('/dashboard');
+      }
     } catch (err: any) {
-      // show the message from DRF or a fallback
-      setError(err.response?.data?.detail || 'Login failed');
+      setError(err?.response?.data?.detail || 'Login failed');
     }
   };
 

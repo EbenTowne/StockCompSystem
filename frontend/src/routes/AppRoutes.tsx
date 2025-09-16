@@ -8,6 +8,7 @@ import RegisterEmployerPage from '../EmployerPage'
 import DashboardPage from '../pages/DashboardPage'
 import ProtectedRoute from '../components/ProtectedRoute'
 import Enable2FAPage from '../pages/Enable2FAPage'  // ✅ new
+import EmployeeDashboardPage from "../pages/EmployeeDashboardPage";
 
 export default function AppRoutes() {
   return (
@@ -32,6 +33,14 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute>
             <Enable2FAPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/employee/dashboard"
+        element={
+          <ProtectedRoute>
+            <EmployeeDashboardPage />
           </ProtectedRoute>
         }
       />

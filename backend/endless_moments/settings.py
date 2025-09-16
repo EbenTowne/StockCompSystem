@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     'rest_framework',
     'rest_framework_simplejwt',
     "rest_framework_simplejwt.token_blacklist",
@@ -53,16 +54,15 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django_otp.middleware.OTPMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 ROOT_URLCONF = 'endless_moments.urls'
@@ -85,21 +85,27 @@ TEMPLATES = [
 WSGI_APPLICATION = 'endless_moments.wsgi.application'
 
 CORS_ALLOWED_ORIGINS = [
-  "http://localhost:3000",
   "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
 ]
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE':   'django.db.backends.postgresql',
-        'NAME':     "test_psql",       
-        'USER':     'postgres',
-        'PASSWORD': 'endlessmoments',
-        'HOST':     'database-1.cwv0648gmaox.us-east-1.rds.amazonaws.com',
-        'PORT':     '5432',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "test_psql",
+        "USER": "postgres",
+        "PASSWORD": "endlessmoments",
+        "HOST": "database-1.cwv0648gmaox.us-east-1.rds.amazonaws.com",
+        "PORT": "5432",
+        "OPTIONS": {
+            "sslmode": "require",         # RDS expects SSL
+            "connect_timeout": 10,        # fail fast if blocked
+        },
     }
 }
 
