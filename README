@@ -1,6 +1,10 @@
 How to run project:
+Backend:
   - To execute project via terminal, run command "python manage.py runserver"
   - Click on the localhost url that is generated to enter rest framework
+Frontend:
+  - To execute project via terminal, run command "npm run dev"
+  - Right click on url that appears from command
 
 To login as admin, use the following credentials when logging into the /admin url:
   - Username: admin
