@@ -1,4 +1,7 @@
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 import math
+from typing import Optional
 from django.utils import timezone
 from django.db.models import Sum
 from rest_framework import serializers
@@ -26,6 +29,23 @@ def bs_call_price(S: float, K: float, T: float, r: float, sigma: float) -> float
     d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     return S * _normal_cdf(d1) - K * math.exp(-r * T) * _normal_cdf(d2)
+
+def safe_dec(x) -> Decimal:
+    if x is None or x == "":
+        return Decimal("0")
+    return Decimal(str(x))
+
+def months_between(d1: date, d2: date) -> int:
+    """Whole months between two dates (order-agnostic)."""
+    if not d1 or not d2:
+        return 0
+    if d2 < d1:
+        d1, d2 = d2, d1
+    r = relativedelta(d2, d1)
+    return r.years * 12 + r.months
+
+def clamp(n: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, n))
 
 # ────────────────────────────────
 #  CREATE SERIES FOR COMPANY CLASSES
@@ -231,141 +251,248 @@ class CapTableSerializer(serializers.Serializer):
 #  GENERATE DETAILED INFO FOR SPECIFIC GRANT
 # ────────────────────────────────
 class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
-    unique_id = serializers.CharField(source='user.unique_id', read_only=True)
-    name = serializers.CharField(source='user.user.first_name', read_only=True)
-    stock_class_name = serializers.CharField(source='stock_class.name', read_only=True)
-    series_name = serializers.SerializerMethodField()
-    vesting_start = serializers.DateField()
-    vesting_end = serializers.DateField()
-    cliff_months = serializers.SerializerMethodField()
-    vesting_start = serializers.DateField(required=False, allow_null=True)
-    vesting_end = serializers.DateField(required=False, allow_null=True)
-    strike_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
-    purchase_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
-    vesting_frequency = serializers.ChoiceField(choices=EquityGrant.VESTING_FREQUENCIES)
-    shares_per_period = serializers.SerializerMethodField()
-    vested_shares = serializers.SerializerMethodField()
-    unvested_shares = serializers.SerializerMethodField()
-    vesting_period_months = serializers.SerializerMethodField()
-    remaining_vesting_months = serializers.SerializerMethodField()
-    vesting_status = serializers.SerializerMethodField()
+    # identifiers / labels
+    id = serializers.IntegerField(read_only=True)
+    unique_id = serializers.CharField(source="user.unique_id", read_only=True)
+    name = serializers.CharField(source="user.user.first_name", read_only=True)
+    stock_class_name = serializers.CharField(source="stock_class.name", read_only=True)
+    series_name = serializers.CharField(source="stock_class.series.name", read_only=True)
+
+    # company FMV (per-share)
+    fmv = serializers.SerializerMethodField(read_only=True)
+
+    # computed vesting outputs
+    vested_shares = serializers.SerializerMethodField(read_only=True)
+    unvested_shares = serializers.SerializerMethodField(read_only=True)
+    vesting_period_months = serializers.SerializerMethodField(read_only=True)
+    remaining_vesting_months = serializers.SerializerMethodField(read_only=True)
+    vesting_status = serializers.SerializerMethodField(read_only=True)
+
+    # values shown in UI
+    vested_value = serializers.SerializerMethodField(read_only=True)
+    grant_date = serializers.SerializerMethodField(read_only=True)
+
+    # computed fields referenced by the UI
+    cliff_months = serializers.SerializerMethodField(read_only=True)
+    shares_per_period = serializers.SerializerMethodField(read_only=True)
+
+    # optional convenience for the UI (dollars per vesting unit)
+    per_period_shares = serializers.SerializerMethodField(read_only=True)
+    per_period_value  = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = EquityGrant
         fields = [
-            'unique_id', 'name', 'stock_class_name', 'series_name',
-            'num_shares', 'iso_shares', 'nqo_shares', 'rsu_shares',
-            'common_shares', 'preferred_shares',
-            'vesting_start', 'vesting_end', 'cliff_months',
-            'strike_price', 'purchase_price', 'vesting_frequency', 'shares_per_period',
-            'vested_shares', 'unvested_shares',
-            'vesting_period_months', 'remaining_vesting_months', 'vesting_status',
+            "id", "unique_id", "name", "stock_class_name", "series_name",
+            "num_shares", "iso_shares", "nqo_shares", "rsu_shares",
+            "common_shares", "preferred_shares",
+            "strike_price", "purchase_price",
+            "vesting_start", "vesting_end", "cliff_months",
+            "vesting_frequency", "shares_per_period",
+            "vested_shares", "unvested_shares",
+            "vesting_period_months", "remaining_vesting_months", "vesting_status",
+            "fmv", "vested_value", "grant_date",
+            "per_period_shares", "per_period_value",
         ]
-        read_only_fields = [
-            'unique_id', 'name', 'stock_class_name', 'series_name',
-            'vested_shares', 'unvested_shares',
-            'vesting_period_months', 'remaining_vesting_months',
-            'vesting_status', 'cliff_months', 'shares_per_period',
-        ]
+        read_only_fields = fields
 
-    def get_series_name(self, obj):
-        if obj.stock_class and obj.stock_class.series:
-            return obj.stock_class.series.name
-        return "N/A"
+    # ---------- simple accessors ----------
+    def get_fmv(self, obj):
+        # obj.user is a UserProfile; company is a direct relation
+        company = getattr(obj.user, "company", None)
+        if not company:
+            return None
+        val = getattr(company, "current_share_price", None)
+        if val in (None, ""):
+            val = getattr(company, "current_fmv", None)
+        return val
 
-    def validate_stock_class(self, value):
-        company = self.context['request'].user.profile.company
-        if not StockClass.objects.filter(name=value, company=company).exists():
-            raise serializers.ValidationError(
-                f"Stock class '{value}' does not exist for your company."
-            )
-        return value
+    def get_grant_date(self, obj):
+        # Use the actual grant issue date
+        return obj.grant_date
 
-    def validate(self, attrs):
-        iso = attrs.get('iso_shares', self.instance.iso_shares)
-        nqo = attrs.get('nqo_shares', self.instance.nqo_shares)
-        rsu = attrs.get('rsu_shares', self.instance.rsu_shares)
-        common = attrs.get('common_shares', self.instance.common_shares)
-        pref = attrs.get('preferred_shares', self.instance.preferred_shares)
-        total = attrs.get('num_shares', self.instance.num_shares)
-        if (iso + nqo + rsu + common + pref) != total:
-            raise serializers.ValidationError(
-                f"num_shares ({total}) must equal sum of share types ({iso + nqo + rsu + common + pref})."
-            )
-        if pref > 0 and (iso + nqo + rsu + common) > 0:
-            raise serializers.ValidationError(
-                "Cannot allocate ISO/NQO/RSU/Common shares when preferred_shares > 0."
-            )
-        return attrs
-
-    def create(self, validated_data):
-        class_name = validated_data.pop('stock_class')
-        validated_data['stock_class'] = StockClass.objects.get(
-            name=class_name,
-            company=self.context['request'].user.profile.company
-        )
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        class_name = validated_data.pop('stock_class', None)
-        if class_name is not None:
-            instance.stock_class = StockClass.objects.get(
-                name=class_name,
-                company=self.context['request'].user.profile.company
-            )
-        return super().update(instance, validated_data)
-
-    def get_cliff_months(self, obj):
-        today = timezone.now().date()
+    def get_cliff_months(self, obj) -> int:
         if not obj.vesting_start:
             return 0
-        rd = relativedelta(today, obj.vesting_start) if today >= obj.vesting_start else relativedelta(obj.vesting_start, today)
+        today = timezone.now().date()
+        rd = relativedelta(today, obj.vesting_start) if today >= obj.vesting_start \
+             else relativedelta(obj.vesting_start, today)
         return rd.years * 12 + rd.months
 
-    def get_shares_per_period(self, obj):
-        if not obj.vesting_start or not obj.vesting_end or obj.num_shares == 0:
+    def get_shares_per_period(self, obj) -> int:
+        units = self._units_total(obj)
+        total = int(obj.num_shares or 0)
+        return (total // units) if units > 0 else 0
+
+    # ---------- unit-aware vesting math ----------
+    # Use days/weeks/biweekly/yearly; for short schedules (< 31 days) always vest by days.
+    def _units_total(self, g) -> int:
+        if not g.vesting_start or not g.vesting_end:
             return 0
-        rd = relativedelta(obj.vesting_end, obj.vesting_start)
-        freq = obj.vesting_frequency.lower()
-        days = (obj.vesting_end - obj.vesting_start).days
-        if freq == 'daily':    units = days
-        elif freq == 'weekly': units = days // 7
-        elif freq == 'biweekly': units = days // 14
-        elif freq == 'yearly': units = rd.years
-        else: units = rd.years * 12 + rd.months
-        return obj.num_shares // units if units > 0 else 0
 
-    def get_vested_shares(self, obj):
-        if obj.preferred_shares > 0:
-            return obj.preferred_shares
-        return obj.vested_shares()
+        start, end = g.vesting_start, g.vesting_end
+        days_total = (end - start).days
+        freq = (g.vesting_frequency or "").lower()
+        rd = relativedelta(end, start)
 
-    def get_unvested_shares(self, obj):
-        return obj.num_shares - self.get_vested_shares(obj)
+        if days_total < 31:
+            return max(days_total, 1)
 
-    def get_vesting_period_months(self, obj):
+        if freq == "daily":
+            return max(days_total, 1)
+        if freq == "weekly":
+            return max(days_total // 7, 1)
+        if freq == "biweekly":
+            return max(days_total // 14, 1)
+        if freq == "yearly":
+            return max(rd.years, 1)
+
+        # default monthly
+        months = rd.years * 12 + rd.months
+        return max(months, 1)
+
+    def _units_elapsed(self, g, today: date) -> int:
+        if not g.vesting_start:
+            return 0
+
+        cliff_months = int(getattr(g, "cliff_months", 0) or 0)
+        start_after_cliff = g.vesting_start + relativedelta(months=+cliff_months)
+
+        if today < start_after_cliff:
+            return 0
+
+        end = g.vesting_end or today
+        stop = min(today, end)
+        days_elapsed = (stop - start_after_cliff).days
+        freq = (g.vesting_frequency or "").lower()
+        rd = relativedelta(stop, start_after_cliff)
+
+        if (g.vesting_end and (g.vesting_end - g.vesting_start).days < 31) or freq == "daily":
+            return max(days_elapsed, 0)
+        if freq == "weekly":
+            return max(days_elapsed // 7, 0)
+        if freq == "biweekly":
+            return max(days_elapsed // 14, 0)
+        if freq == "yearly":
+            return max(rd.years, 0)
+
+        months = rd.years * 12 + rd.months
+        return max(months, 0)
+
+    def _linear_vested(self, g, today: date) -> int:
+        total_shares = int(g.num_shares or 0)
+        if total_shares <= 0:
+            return 0
+
+        total_units = self._units_total(g)
+        if total_units <= 0:
+            return 0
+
+        elapsed_units = self._units_elapsed(g, today)
+        elapsed_units = min(max(elapsed_units, 0), total_units)
+
+        return (total_shares * elapsed_units) // total_units  # floor to whole shares
+
+    def get_vested_shares(self, obj) -> int:
+        return self._linear_vested(obj, date.today())
+
+    def get_unvested_shares(self, obj) -> int:
+        total = int(obj.num_shares or 0)
+        return max(0, total - self.get_vested_shares(obj))
+
+    # Keep these as months for display
+    def get_vesting_period_months(self, obj) -> int:
         if not obj.vesting_start or not obj.vesting_end:
             return 0
-        rd = relativedelta(obj.vesting_end, obj.vesting_start)
-        return rd.years * 12 + rd.months
+        return months_between(obj.vesting_start, obj.vesting_end)
 
-    def get_remaining_vesting_months(self, obj):
-        today = timezone.now().date()
+    def get_remaining_vesting_months(self, obj) -> int:
         if not obj.vesting_end:
             return 0
-        rd = relativedelta(obj.vesting_end, today)
-        return max(rd.years * 12 + rd.months, 0)
+        return max(0, months_between(date.today(), obj.vesting_end))
 
-    def get_vesting_status(self, obj):
-        if obj.preferred_shares > 0:
-            return 'Preferred Shares (Immediate Vest)'
+    def get_vesting_status(self, obj) -> str:
         vested = self.get_vested_shares(obj)
-        total = obj.num_shares
-        if vested == 0:
-            return 'Not Vested'
-        if vested >= total:
-            return 'Fully Vested'
-        return 'Vesting'
+        total = int(obj.num_shares or 0)
+        if vested <= 0:
+            return "Not Vested"
+        if vested >= total > 0:
+            return "Fully Vested"
+        return "Partially Vested"
+
+    # ---------- value math ----------
+    def _bucket_prices(self, obj) -> tuple[Decimal, Decimal, Decimal]:
+        strike   = Decimal(str(obj.strike_price or 0))
+        purchase = Decimal(str(obj.purchase_price or 0))
+        fmv      = Decimal(str(self.get_fmv(obj) or 0))
+        return strike, purchase, fmv
+
+    def get_vested_value(self, obj):
+        """
+        Price vested shares by type:
+          ISO/NQO -> strike_price
+          RSU     -> FMV
+          Common/Preferred -> purchase_price
+        Allocates vested shares proportionally when mixed.
+        """
+        total = int(obj.num_shares or 0)
+        vested_total = int(self.get_vested_shares(obj) or 0)
+        if total <= 0 or vested_total <= 0:
+            return 0.0
+
+        iso = int(obj.iso_shares or 0)
+        nqo = int(obj.nqo_shares or 0)
+        rsu = int(obj.rsu_shares or 0)
+        common = int(obj.common_shares or 0)
+        pref = int(obj.preferred_shares or 0)
+
+        strike, purchase, fmv = self._bucket_prices(obj)
+
+        frac = Decimal(vested_total) / Decimal(total)
+        v_iso  = int((Decimal(iso)   * frac).to_integral_value(rounding=ROUND_HALF_UP))
+        v_nqo  = int((Decimal(nqo)   * frac).to_integral_value(rounding=ROUND_HALF_UP))
+        v_rsu  = int((Decimal(rsu)   * frac).to_integral_value(rounding=ROUND_HALF_UP))
+        v_comm = int((Decimal(common)* frac).to_integral_value(rounding=ROUND_HALF_UP))
+        v_pref = int((Decimal(pref)  * frac).to_integral_value(rounding=ROUND_HALF_UP))
+
+        value = (
+            (Decimal(v_iso + v_nqo) * strike) +
+            (Decimal(v_rsu)         * fmv) +
+            (Decimal(v_comm + v_pref) * purchase)
+        ).quantize(Decimal("0.01"))
+        return float(value)
+
+    # ---------- per-period convenience for UI ----------
+    def get_per_period_shares(self, obj) -> int:
+        units = self._units_total(obj)
+        total = int(obj.num_shares or 0)
+        return (total // units) if units > 0 else 0
+
+    def get_per_period_value(self, obj):
+        shares = self.get_per_period_shares(obj)
+        if shares <= 0:
+            return 0.0
+
+        iso_nqo = int(obj.iso_shares or 0) + int(obj.nqo_shares or 0)
+        rsu = int(obj.rsu_shares or 0)
+        common_pref = int(obj.common_shares or 0) + int(obj.preferred_shares or 0)
+
+        strike, purchase, fmv = self._bucket_prices(obj)
+
+        kinds = sum(1 for x in (iso_nqo, rsu, common_pref) if x > 0)
+        if kinds <= 1:
+            price = strike if iso_nqo > 0 else (fmv if rsu > 0 else purchase)
+        else:
+            total = Decimal(iso_nqo + rsu + common_pref) or Decimal(1)
+            price = (
+                (Decimal(iso_nqo) * strike) +
+                (Decimal(rsu) * fmv) +
+                (Decimal(common_pref) * purchase)
+            ) / total
+
+        return float((Decimal(shares) * price).quantize(Decimal("0.01")))
+# Alias so your list view can reference a dedicated name if you prefer
+MyGrantsListSerializer = EmployeeGrantDetailSerializer
 
 # ────────────────────────────────
 #  GENERATE CAP TABLE CONTAINING BLACK SCHOLES INFO

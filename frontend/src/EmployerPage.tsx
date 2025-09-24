@@ -28,8 +28,8 @@ export default function RegisterEmployerPage() {
         name: form.name,
         email: form.email,
         password: form.password,
-        companyName: form.company_name,
-        uniqueId: form.unique_id,
+        company_name: form.company_name,
+        unique_id: form.unique_id,
       });
       nav('/login');
     } catch (err: any) {

@@ -12,6 +12,7 @@ class Company(models.Model):
     name                 = models.CharField(max_length=200)
     total_authorized_shares = models.PositiveIntegerField(default=0)
     current_share_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    current_market_value     = models.DecimalField(max_digits=18, decimal_places=2, default=0, help_text="Estimated total company equity value (USD)")
     risk_free_rate      = models.FloatField(default=0.0, help_text="Annual risk-free rate, e.g. 0.03 for 3%")
     volatility          = models.FloatField(default=0.0, help_text="Annualized σ, e.g. 0.25 for 25%")
 
@@ -69,3 +70,19 @@ class EmployeeInvite(models.Model):
 
     def __str__(self):
         return f"Invite {self.token} → {self.email}"
+    
+class CompanyFinancial(models.Model):
+    company    = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='financials')
+    year       = models.PositiveIntegerField()
+    # Use net_income for “profit/loss” (negative values allowed)
+    revenue    = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    net_income = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-year']
+        constraints = [
+            models.UniqueConstraint(fields=['company', 'year'], name='unique_company_year_financial')
+        ]
+
+    def __str__(self):
+        return f"{self.company.name} {self.year}"

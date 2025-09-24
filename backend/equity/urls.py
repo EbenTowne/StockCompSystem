@@ -1,6 +1,8 @@
 from django.urls import path
 from .views import (
     BlackScholesCapTableView,
+    MyGrantDetailView,
+    MyGrantsView,
     SeriesDetailView,
     SeriesListCreateView,
     StockClassListCreateView,
@@ -31,4 +33,6 @@ urlpatterns = [
     path('schedule/all/', AllGrantVestingScheduleView.as_view(), name='combined-vesting-schedule'),
     path('series/', SeriesListCreateView.as_view(), name='series-list'),
     path('series/<int:pk>/', SeriesDetailView.as_view(), name='series-details'),
+    path('me/grants/', MyGrantsView.as_view(), name='my-grants'),
+    path('me/grants/<int:grant_id>/', MyGrantDetailView.as_view(), name='my-grant-detail'),
 ]

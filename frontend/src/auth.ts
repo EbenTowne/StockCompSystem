@@ -61,8 +61,8 @@ export const registerEmployer = (data: {
   name: string;
   email: string;
   password: string;
-  companyName: string;
-  uniqueId: string;
+  company_name: string;
+  unique_id: string;
 }) => axios.post(`${API_BASE}/register/employer/`, data);
 
 /* ----------------------------------------------------------------------------

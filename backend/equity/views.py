@@ -7,6 +7,7 @@ from django.shortcuts            import get_object_or_404
 from dateutil.relativedelta      import relativedelta  # type: ignore # ensure python-dateutil is installed
 from rest_framework.views        import APIView
 from rest_framework.response     import Response
+from rest_framework.generics     import ListAPIView, RetrieveAPIView
 from rest_framework              import generics, permissions, status
 from rest_framework.exceptions import ValidationError
 from accounts.models             import Company, UserProfile
@@ -681,3 +682,23 @@ class BlackScholesCapTableView(APIView):
             "total_option_value": round(total_value, 2),
             "grants": rows,
         })
+    
+
+class MyGrantsView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = EmployeeGrantDetailSerializer
+
+    def get_queryset(self):
+        # assumes EquityGrant.user.user is the Django auth user
+        return EquityGrant.objects.filter(user__user=self.request.user).select_related(
+            "stock_class", "user", "user__user"
+        )
+
+class MyGrantDetailView(RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = EmployeeGrantDetailSerializer
+    lookup_url_kwarg = "grant_id"   # matches the URL below
+    lookup_field = "id"
+
+    def get_queryset(self):
+        return EquityGrant.objects.filter(user=self.request.user.profile)

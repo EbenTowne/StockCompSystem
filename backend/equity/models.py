@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from django.db import models
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta  # type: ignore
@@ -125,89 +126,161 @@ class EquityGrant(models.Model):
                 self.cliff_months = 0
         super().save(*args, **kwargs)
 
-    def vested_shares(self, on_date=None):
-        on_date = on_date or timezone.now().date()
+    @staticmethod
+    def _units_between(start: date, end: date, freq: str) -> int:
+        if end < start:
+            return 0
+        days = (end - start).days
+        freq = (freq or "MONTHLY").upper()
 
-        if self.preferred_shares:
-            return self.preferred_shares
+        if freq == "DAILY":
+            # inclusive: if start == end → 1 unit
+            return days + 1
+        if freq == "WEEKLY":
+            return (days // 7) + 1
+        if freq == "BIWEEKLY":
+            return (days // 14) + 1
+        if freq == "YEARLY":
+            rd = relativedelta(end, start)
+            # years is whole years elapsed; +1 to include the starting year unit
+            return rd.years + 1
+        # default MONTHLY
+        rd = relativedelta(end, start)
+        return (rd.years * 12 + rd.months) + 1
+    
+    def vested_shares(self, on_date: date | None = None) -> int:
+        """
+        Straight-line vesting by selected frequency from vesting_start to
+        vesting_end (inclusive). Preferred shares vest immediately.
+        """
+        # Immediate vest for preferred
+        if (self.preferred_shares or 0) > 0:
+            return int(self.preferred_shares)
 
-        if not self.vesting_start or on_date < self.vesting_start:
+        # Need valid dates and total shares
+        if not self.vesting_start or not self.vesting_end or not self.num_shares:
             return 0
 
-        if self.vesting_end and on_date >= self.vesting_end:
-            return (
-                self.iso_shares +
-                self.nqo_shares +
-                self.rsu_shares +
-                self.common_shares
-            )
+        today = on_date or timezone.now().date()
 
-        start = self.vesting_start
-        end   = self.vesting_end
-        elapsed = relativedelta(on_date, start)
-        total   = relativedelta(end, start)
-        elapsed_months = elapsed.years * 12 + elapsed.months
-        total_months   = total.years   * 12 + total.months
-        fraction = elapsed_months / total_months if total_months > 0 else 0
+        # Before vesting begins
+        if today < self.vesting_start:
+            return 0
 
-        vested_iso    = int(self.iso_shares    * fraction)
-        vested_nqo    = int(self.nqo_shares    * fraction)
-        vested_rsu    = int(self.rsu_shares    * fraction)
-        vested_common = int(self.common_shares * fraction)
+        # Evaluate no later than the vesting_end
+        eval_date = min(today, self.vesting_end)
 
-        return vested_iso + vested_nqo + vested_rsu + vested_common
+        # Total/elapsed units by frequency (inclusive)
+        total_units = self._units_between(self.vesting_start, self.vesting_end, self.vesting_frequency)
+        elapsed_units = self._units_between(self.vesting_start, eval_date, self.vesting_frequency)
+
+        if total_units <= 0:
+            return 0
+
+        # Straight-line allocation across the whole grant
+        per_unit = self.num_shares / total_units
+        vested = int(elapsed_units * per_unit)
+
+        # Never exceed total shares
+        return min(vested, int(self.num_shares))
 
     def vesting_schedule_breakdown(self):
-        if self.preferred_shares and not (self.vesting_start and self.vesting_end):
+        """
+        Return a list of {date, iso, nqo, rsu, common, preferred, total_vested}
+        entries, one per vesting period. Uses vesting_frequency and supports short
+        grants (< 31 days) by switching to daily units.
+        """
+
+        # Immediate-vest cases
+        if (self.preferred_shares or 0) > 0:
+            total = int(self.preferred_shares or 0)
             return [{
-                'date':         self.grant_date.isoformat(),
-                'iso':          0,
-                'nqo':          0,
-                'rsu':          0,
-                'common':       0,
-                'preferred':    self.preferred_shares,
-                'total_vested': self.preferred_shares
+                "date":        (self.grant_date or self.vesting_start or self.vesting_end).isoformat(),
+                "iso":         0, "nqo": 0, "rsu": 0, "common": 0,
+                "preferred":   total,
+                "total_vested": total,
+            }]
+        if (self.common_shares or 0) > 0 and (self.purchase_price is not None):
+            total = int(self.common_shares or 0)
+            return [{
+                "date":        (self.grant_date or self.vesting_start or self.vesting_end).isoformat(),
+                "iso":         0, "nqo": 0, "rsu": 0,
+                "common":      total, "preferred": 0,
+                "total_vested": total,
             }]
 
+        # Need both endpoints for a schedule
         if not (self.vesting_start and self.vesting_end):
             return []
 
-        start = self.vesting_start
+        # Respect cliff (months)
+        cliff_m = int(self.cliff_months or 0)
+        start = self.vesting_start + relativedelta(months=+cliff_m)
         end   = self.vesting_end
+        if start >= end:
+            # vest everything at end if cliff reaches/passes end
+            return [{
+                "date":        end.isoformat(),
+                "iso":         int(self.iso_shares or 0),
+                "nqo":         int(self.nqo_shares or 0),
+                "rsu":         int(self.rsu_shares or 0),
+                "common":      int(self.common_shares or 0),
+                "preferred":   0,
+                "total_vested": int(self.iso_shares or 0) + int(self.nqo_shares or 0) +
+                                int(self.rsu_shares or 0) + int(self.common_shares or 0),
+            }]
+
+        # Pick unit count + step based on frequency, with daily fallback for short spans
+        freq = (self.vesting_frequency or "").lower()
+        days_total = (end - start).days
         rd_total = relativedelta(end, start)
-        total_months = rd_total.years * 12 + rd_total.months
+
+        if days_total < 31 or freq == "daily":
+            units = max(days_total, 1)
+            step  = timedelta(days=1)
+        elif freq == "weekly":
+            units = max(days_total // 7, 1)
+            step  = timedelta(weeks=1)
+        elif freq == "biweekly":
+            units = max(days_total // 14, 1)
+            step  = timedelta(days=14)
+        elif freq == "yearly":
+            units = max(rd_total.years, 1)
+            step  = relativedelta(years=1)
+        else:
+            # default monthly
+            units = max(rd_total.years * 12 + rd_total.months, 1)
+            step  = relativedelta(months=1)
+
+        def alloc_for_period(total, i, n):
+            return int(total * i / n) - int(total * (i - 1) / n)
+
+        iso_t   = int(self.iso_shares or 0)
+        nqo_t   = int(self.nqo_shares or 0)
+        rsu_t   = int(self.rsu_shares or 0)
+        common_t= int(self.common_shares or 0)
 
         schedule = []
-        prev = {'iso': 0, 'nqo': 0, 'rsu': 0, 'common': 0, 'preferred': 0}
+        for i in range(1, units + 1):
+            d = start + (step * i if isinstance(step, timedelta) else relativedelta(start, start) + step * i)
+            if d > end:
+                d = end
 
-        for m in range(1, total_months + 1):
-            date_m = start + relativedelta(months=m)
-            frac   = m / total_months
-
-            cum_iso       = int(self.iso_shares    * frac)
-            cum_nqo       = int(self.nqo_shares    * frac)
-            cum_rsu       = int(self.rsu_shares    * frac)
-            cum_common    = int(self.common_shares * frac)
-            cum_preferred = self.preferred_shares if self.preferred_shares else 0
+            iso_p   = alloc_for_period(iso_t,    i, units)
+            nqo_p   = alloc_for_period(nqo_t,    i, units)
+            rsu_p   = alloc_for_period(rsu_t,    i, units)
+            comm_p  = alloc_for_period(common_t, i, units)
 
             vest = {
-                'date':       date_m.isoformat(),
-                'iso':        cum_iso - prev['iso'],
-                'nqo':        cum_nqo - prev['nqo'],
-                'rsu':        cum_rsu - prev['rsu'],
-                'common':     cum_common - prev['common'],
-                'preferred':  cum_preferred - prev['preferred'],
+                "date":       d.isoformat(),
+                "iso":        iso_p,
+                "nqo":        nqo_p,
+                "rsu":        rsu_p,
+                "common":     comm_p,
+                "preferred":  0,
             }
-            vest['total_vested'] = sum(vest[k] for k in ('iso','nqo','rsu','common','preferred'))
-
+            vest["total_vested"] = iso_p + nqo_p + rsu_p + comm_p
             schedule.append(vest)
-            prev.update({
-                'iso':       cum_iso,
-                'nqo':       cum_nqo,
-                'rsu':       cum_rsu,
-                'common':    cum_common,
-                'preferred': cum_preferred,
-            })
 
         return schedule
 

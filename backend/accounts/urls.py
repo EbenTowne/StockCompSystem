@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.urls import path, include
+
+from .views_ai import EmployerChatView
 from .views import (
+    CompanyFinancialsView,
     DeleteAccountView,
     EmployerRegistrationView,
     EmployeeInviteView,
@@ -27,4 +30,6 @@ urlpatterns = [
     path("auth/reset-password/",  ResetPasswordView.as_view(),  name="reset-password"),
     path("auth/change-password/", ChangePasswordView.as_view(), name="change-password"),
     path('company/', CompanyDetailView.as_view(), name='company-detail'),
+    path("company/financials/", CompanyFinancialsView.as_view(), name="company-financials"),
+    path("ai/employer-query/", EmployerChatView.as_view(), name="ai-employer-query"),
 ]

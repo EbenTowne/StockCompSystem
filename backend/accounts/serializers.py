@@ -16,7 +16,13 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
-from .models import UserProfile, Company, EmployeeInvite
+from .models import CompanyFinancial, UserProfile, Company, EmployeeInvite
+
+class CompanyFinancialInputSerializer(serializers.ModelSerializer):
+    """Used by the browsable API forms (renders textboxes)."""
+    class Meta:
+        model = CompanyFinancial
+        fields = ["year", "revenue", "net_income"]
 
 # ────────────────────────────────
 #  Company  -  write + read
@@ -24,13 +30,13 @@ from .models import UserProfile, Company, EmployeeInvite
 class CompanySerializer(serializers.ModelSerializer):
     name                    = serializers.CharField(read_only=True)
     total_authorized_shares = serializers.IntegerField()
-    current_fmv             = serializers.DecimalField(
-                                 source='current_share_price',
-                                 max_digits=12,
-                                 decimal_places=2
-                              )
+    current_fmv = serializers.DecimalField(
+        source='current_share_price', max_digits=12, decimal_places=2
+    )
+    current_market_value = serializers.DecimalField(max_digits=18, decimal_places=2)
     volatility              = serializers.DecimalField(max_digits=5,  decimal_places=2)
     risk_free_rate          = serializers.DecimalField(max_digits=5,  decimal_places=4)
+    financials = CompanyFinancialInputSerializer(many=True, required=False)
 
     class Meta:
         model  = Company
@@ -38,9 +44,29 @@ class CompanySerializer(serializers.ModelSerializer):
             'name',
             'total_authorized_shares',
             'current_fmv',
+            'current_market_value',
             'volatility',
             'risk_free_rate',
+            'financials'
         ]
+    
+    def update(self, instance, validated_data):
+        # Pull out nested rows if provided
+        financial_rows = validated_data.pop("financials", None)
+        instance = super().update(instance, validated_data)
+
+        # Upsert each year (create or update)
+        if financial_rows is not None:
+            for row in financial_rows:
+                CompanyFinancial.objects.update_or_create(
+                    company=instance,
+                    year=row["year"],
+                    defaults={
+                        "revenue": row.get("revenue"),
+                        "net_income": row.get("net_income"),
+                    },
+                )
+        return instance
 
 # ────────────────────────────────
 #  EMPLOYER  –  write + read

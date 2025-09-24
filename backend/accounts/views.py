@@ -15,8 +15,9 @@ from django.core.mail import send_mail
 from django.conf import settings
 
 
-from .models import UserProfile, EmployeeInvite, Company
+from .models import CompanyFinancial, UserProfile, EmployeeInvite, Company
 from .serializers import (
+    CompanyFinancialInputSerializer,
     EmployerRegistrationSerializer,
     EmployeeInviteSerializer,
     EmployeeRegistrationSerializer,
@@ -301,3 +302,46 @@ class CompanyDetailView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.profile.company
+
+# ────────────────────────────────
+# View/Change Company Financials
+# ────────────────────────────────
+class CompanyFinancialsView(generics.ListCreateAPIView):
+    """
+    GET  -> show last 5 rows (wrapped under {"financials": [.]}).
+    POST -> upsert a single row from form fields (textboxes in DRF UI).
+    """
+    permission_classes = [permissions.IsAuthenticated, IsEmployer]
+    serializer_class   = CompanyFinancialInputSerializer  # renders DRF form fields
+
+    def get_queryset(self):
+        return self.request.user.profile.company.financials.order_by("-year")
+
+    def list(self, request, *args, **kwargs):
+        qs   = self.get_queryset()[:5]
+        data = CompanyFinancialInputSerializer(qs, many=True).data
+        return Response({"financials": data})
+
+    def create(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        company = request.user.profile.company
+        # Upsert by (company, year)
+        CompanyFinancial.objects.update_or_create(
+            company=company,
+            year=ser.validated_data["year"],
+            defaults={
+                "revenue":    ser.validated_data.get("revenue"),
+                "net_income": ser.validated_data.get("net_income"),
+            },
+        )
+
+        # Return refreshed list with the same serializer used for the form
+        qs   = self.get_queryset()[:5]
+        data = CompanyFinancialInputSerializer(qs, many=True).data
+        return Response({"financials": data}, status=status.HTTP_201_CREATED)
+
+# ──────────────
+# AI View Code
+#───────────────
