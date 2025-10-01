@@ -1,14 +1,20 @@
-// frontend/src/routes/AppRoutes.tsx
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from '../LoginPage'
 import ForgetPasswordPage from '../ForgetPasswordPage'
 import ResetPasswordPage from '../ResetPasswordPage'
 import RegisterEmployerPage from '../EmployerPage'
-import DashboardPage from '../pages/DashboardPage'
 import ProtectedRoute from '../components/ProtectedRoute'
-import Enable2FAPage from '../pages/Enable2FAPage'  // ✅ new
-import EmployeeDashboardPage from "../pages/EmployeeDashboardPage";
+import Enable2FAPage from '../pages/Enable2FAPage'
+import EmployeeDashboardPage from '../pages/EmployeeDashboardPage'
+
+// employer pages
+import EmployerLayout from '../components/EmployerLayout'
+import DashboardPage from '../pages/DashboardPage'
+import InviteEmployee from "../pages/InviteEmployee"
+import CreateGrant from "../pages/CreateGrant"
+import ManageGrant from '../pages/ManageGrant'
+import CapTable from "../pages/CapTable"
 
 export default function AppRoutes() {
   return (
@@ -19,15 +25,23 @@ export default function AppRoutes() {
       <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
       <Route path="/register-employer" element={<RegisterEmployerPage />} />
 
-      {/* protected */}
+      {/* employer (with sidebar layout) */}
       <Route
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <DashboardPage />
+            <EmployerLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<DashboardPage />} />
+        <Route path="invite" element={<InviteEmployee />} />
+        <Route path="create-grant" element={<CreateGrant />} />
+        <Route path="grants" element={<ManageGrant />} />
+        <Route path="cap-table" element={<CapTable />} />
+      </Route>
+
+      {/* employee area */}
       <Route
         path="/settings/2fa"
         element={

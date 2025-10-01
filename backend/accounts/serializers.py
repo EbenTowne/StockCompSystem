@@ -196,10 +196,11 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 #  PROFILE info (common to both roles)
 # ────────────────────────────────
 class ProfileInfoSerializer(serializers.ModelSerializer):
-    name    = serializers.CharField(source="user.first_name", read_only=True)
-    email   = serializers.EmailField(source="user.email", read_only=True)
+    name = serializers.CharField(source="user.first_name", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
     company = serializers.CharField(source="company.name", read_only=True)
+    username = serializers.CharField(source="user.username", read_only=True)  # <-- add
 
     class Meta:
-        model  = UserProfile
-        fields = ["unique_id", "name", "email", "company", "role"]
+        model = UserProfile
+        fields = ["unique_id", "name", "email", "company", "role", "username"]

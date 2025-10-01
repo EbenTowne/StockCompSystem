@@ -1,0 +1,50 @@
+.emp-layout {
+  display: flex;
+  min-height: calc(100vh - 56px); /* adjust if your top header height differs */
+}
+
+/* Sidebar */
+.emp-sidebar {
+  width: 240px;
+  flex: 0 0 240px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  padding: 16px 12px;
+  position: sticky;
+  top: 56px; /* same as header height so it sits under it */
+  align-self: flex-start;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+}
+
+/* Links */
+.emp-sidebar__nav {
+  display: grid;
+  gap: 6px;
+}
+
+.emp-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #374151;            /* gray-700 */
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.emp-link:hover {
+  background: #f3f4f6;       /* gray-100 */
+  color: #111827;            /* gray-900 */
+}
+
+.emp-link.active {
+  background: #111827;       /* gray-900 */
+  color: #ffffff;
+}
+
+/* Main content */
+.emp-content {
+  flex: 1 1 auto;
+  padding: 20px;
+  background: #f7f8fa;       /* light page bg to match your screenshot */
+}
