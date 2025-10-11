@@ -91,6 +91,8 @@ CORS_ALLOWED_ORIGINS = [
   "http://localhost:5174",
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
 ]
 
 # Database
@@ -183,4 +185,4 @@ SIMPLE_JWT = {
 LOGIN_URL = 'two_factor:login'
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"  # or wherever you want after login
-FRONTEND_URL = "http://localhost:3000"
+FRONTEND_URL = "http://localhost:5173"

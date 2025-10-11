@@ -21,7 +21,7 @@ export default function EmployerTaskbar() {
           Manage/View Grants
         </NavLink>
         <NavLink to="cap-table" className={({ isActive }) => (isActive ? active : linkBase)}>
-          View Cap Table
+          View Cap Table & Monthly Expenses
         </NavLink>
         {/* Add AI later if you add the page: <NavLink to="ai" ...>AI Assistant</NavLink> */}
       </nav>

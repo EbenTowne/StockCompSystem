@@ -52,29 +52,22 @@ class EmployerRegistrationView(generics.CreateAPIView):
 #View for inviting employees to employer company
 class EmployeeInviteView(generics.CreateAPIView):
     serializer_class   = EmployeeInviteSerializer
-    permission_classes = [permissions.IsAuthenticated, IsEmployer] #Only employers can invite employees
+    permission_classes = [permissions.IsAuthenticated, IsEmployer]
 
-    #Create invite email
     def perform_create(self, serializer):
-        #Tie employer and company to invite
         invite = serializer.save(
             company  = self.request.user.profile.company,
             employer = self.request.user
         )
 
-        #Create link to employee registration
-        link = self.request.build_absolute_uri(
-            reverse('register-employee-token', args=[str(invite.token)])
-        )
+        # FRONTEND link (SPA route handles the token)
+        link = f"{settings.FRONTEND_URL.rstrip('/')}/employee/register?token={invite.token}"
 
-        #Create email
         subject = f"You've been invited by {self.request.user.username}"
-        
-        #Open and read html content
+
         with open('accounts/templates/inviteEmail.html', 'r') as file:
             htmlContent = file.read()
-        
-        #Inject user specific content into html
+
         htmlContent = htmlContent.replace('{{ inviter }}', self.request.user.first_name or self.request.user.username)
         htmlContent = htmlContent.replace('{{ company }}', invite.company.name)
         htmlContent = htmlContent.replace('{{ link }}', link)
@@ -90,11 +83,30 @@ class EmployeeInviteView(generics.CreateAPIView):
         email.attach_alternative(htmlContent, "text/html")
         email.send()
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response(status=status.HTTP_201_CREATED)
+class EmployeeInviteValidateView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        token = request.query_params.get("token")
+        if not token:
+            return Response({"detail": "Missing token"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            invite = EmployeeInvite.objects.select_related("company").get(token=token, is_used=False)
+        except EmployeeInvite.DoesNotExist:
+            raise NotFound("Invalid or expired invite token")
+
+        # Optional expiry check (supports null expires_at)
+        if invite.expires_at and invite.expires_at <= now():
+            return Response({"detail": "Invite has expired"}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            "email": invite.email,
+            "company": invite.company.name,
+            "company_id": invite.company.id,
+            "inviter": invite.employer.first_name or invite.employer.username,
+            "expires_at": invite.expires_at,
+        })
 
 # View for registering employees
 class EmployeeRegistrationView(generics.GenericAPIView):

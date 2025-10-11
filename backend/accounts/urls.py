@@ -5,6 +5,7 @@ from .views_ai import EmployerChatView
 from .views import (
     CompanyFinancialsView,
     DeleteAccountView,
+    EmployeeInviteValidateView,
     EmployerRegistrationView,
     EmployeeInviteView,
     EmployeeRegistrationView,
@@ -21,6 +22,7 @@ from .views import (
 urlpatterns = [
     path('register/employer/', EmployerRegistrationView.as_view(), name='register-employer'),
     path('invite/employee/', EmployeeInviteView.as_view(), name='invite-employee'),
+    path('invite/employee/validate/', EmployeeInviteValidateView.as_view(), name='invite-employee-validate'),
     path('register/employee/<uuid:token>/', EmployeeRegistrationView.as_view(),name='register-employee-token'),
     path('employees/', MyEmployeesListView.as_view(), name='my-employees'),
     path('deleteAccount/', DeleteAccountView.as_view(), name='delete-account'),
