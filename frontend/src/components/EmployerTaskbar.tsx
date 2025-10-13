@@ -11,19 +11,30 @@ export default function EmployerTaskbar() {
         <NavLink to="" end className={({ isActive }) => (isActive ? active : linkBase)}>
           Overview
         </NavLink>
-        <NavLink to="invite" className={({ isActive }) => (isActive ? active : linkBase)}>
-          Invite New Employee
+        <NavLink to="company-metrics" className={({ isActive }) => (isActive ? active : linkBase)}>
+          Company Metrics
         </NavLink>
         <NavLink to="create-grant" className={({ isActive }) => (isActive ? active : linkBase)}>
-          Create Stock Option Grant
+          Create Stock Option
         </NavLink>
         <NavLink to="grants" className={({ isActive }) => (isActive ? active : linkBase)}>
-          Manage/View Grants
+          Manage Stock Options
         </NavLink>
         <NavLink to="cap-table" className={({ isActive }) => (isActive ? active : linkBase)}>
-          View Cap Table & Monthly Expenses
+          Cap Table
         </NavLink>
-        {/* Add AI later if you add the page: <NavLink to="ai" ...>AI Assistant</NavLink> */}
+        <NavLink to="expenses" className={({ isActive }) => (isActive ? active : linkBase)}>
+          Expenses
+        </NavLink>
+        <NavLink to="invite" className={({ isActive }) => (isActive ? active : linkBase)}>
+          Invite Employee
+        </NavLink>
+        <NavLink to="view-employees" className={({ isActive }) => (isActive ? active : linkBase)}>
+          View Employees
+        </NavLink>
+        <NavLink to="ai-chatbot" className={({ isActive }) => (isActive ? active : linkBase)}>
+          AI Chatbot
+        </NavLink>
       </nav>
     </aside>
   );

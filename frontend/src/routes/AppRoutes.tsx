@@ -9,12 +9,16 @@ import Enable2FAPage from '../pages/Enable2FAPage'
 import EmployeeDashboardPage from '../pages/EmployeeDashboardPage'
 
 // employer pages
-import EmployerLayout from '../components/EmployerLayout'
-import DashboardPage from '../pages/DashboardPage'
+import EmployerLayout from "../components/EmployerLayout"
+import DashboardPage from "../pages/DashboardPage"
 import InviteEmployee from "../pages/InviteEmployee"
 import CreateGrant from "../pages/CreateGrant"
-import ManageGrant from '../pages/ManageGrant'
+import ManageGrant from "../pages/ManageGrant"
 import CapTable from "../pages/CapTable"
+import AIChatbot from "../pages/AIChatbot"
+import Expenses from "../pages/Expenses"
+import CompanyMetrics from "../pages/CompanyMetrics"
+import ViewEmployees from "../pages/ViewEmployees";
 
 // NEW: employee registration (public)
 import EmployeeRegister from '../pages/EmployeeRegister'
@@ -45,6 +49,10 @@ export default function AppRoutes() {
         <Route path="create-grant" element={<CreateGrant />} />
         <Route path="grants" element={<ManageGrant />} />
         <Route path="cap-table" element={<CapTable />} />
+        <Route path="ai-chatbot" element={<AIChatbot />} />
+        <Route path="expenses" element={<Expenses />} />
+        <Route path="company-metrics" element={<CompanyMetrics />} />
+        <Route path="view-employees" element={<ViewEmployees />} />
       </Route>
 
       {/* employee area */}
