@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date
 from django.utils import timezone
+from django.db import transaction
 from decimal import Decimal
 import math
 from django.shortcuts            import get_object_or_404
@@ -29,27 +30,19 @@ class SeriesListCreateView(generics.ListCreateAPIView):
     serializer_class = SeriesSerializer
 
     def get_queryset(self):
+        # now valid because Series has company FK
         return Series.objects.filter(company=self.request.user.profile.company)
 
     def perform_create(self, serializer):
-        #Create series and automatically link company object
         serializer.save(company=self.request.user.profile.company)
 
-#Allow user to view details of series    
 class SeriesDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsEmployer]
     serializer_class = SeriesSerializer
-    queryset = Series.objects.all()
 
-    #On delete destroy object
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        series_name = instance.name
-        self.perform_destroy(instance)
-        return Response(
-            {"detail": f"Series '{series_name}' and all associated classes and grants were deleted."},
-            status=status.HTTP_204_NO_CONTENT
-        )
+    def get_queryset(self):
+        # lock detail/updates to the same company
+        return Series.objects.filter(company=self.request.user.profile.company)
 
 #Allow creation of stock classes
 class StockClassListCreateView(generics.ListCreateAPIView):
@@ -59,18 +52,21 @@ class StockClassListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return self.request.user.profile.company.stock_classes.all()
 
-    #Create series and automatically link company object
     def perform_create(self, serializer):
-        serializer.save(company=self.request.user.profile.company)
+        # ensure create + validation run atomically
+        with transaction.atomic():
+            serializer.save(company=self.request.user.profile.company)
 
     def create(self, request, *args, **kwargs):
         try:
-            return super().create(request, *args, **kwargs)
+            # force atomic for the entire create flow
+            with transaction.atomic():
+                return super().create(request, *args, **kwargs)
+        except ValidationError as e:
+            return Response({"errors": e.detail}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response(
-                {"detail": f"Error creating stock class: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": f"Error creating stock class: {str(e)}"},
+                            status=status.HTTP_400_BAD_REQUEST)
 
 #Allow details for stock classes to be viewed
 class StockClassDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -80,6 +76,11 @@ class StockClassDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return self.request.user.profile.company.stock_classes.all()
+
+    # make updates atomic, too
+    def update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            return super().update(request, *args, **kwargs)
 
 #Allow creation of an equity option/grant
 class EquityGrantListCreateView(generics.ListCreateAPIView):
@@ -397,13 +398,13 @@ class GrantMonthlyExpensesView(APIView):
         today         = timezone.now().date()
         current_month = self.start_of_month(today)
 
-        # 2) Compute fair-value components
+        # 2) Compute fair-value components (per-share/option values)
         iso_nqo = (grant.iso_shares or 0) + (grant.nqo_shares or 0)
         rsu     = grant.rsu_shares or 0
         common  = grant.common_shares or 0
         pref    = grant.preferred_shares or 0
 
-        # Options: Black–Scholes
+        # Options: Black–Scholes value PER OPTION at grant (or horizon) — used per vesting period
         strike = float(grant.strike_price or 0.0)
         if iso_nqo > 0 and share_price > 0 and strike > 0 and volatility > 0:
             vest_end = grant.vesting_end or today
@@ -412,78 +413,87 @@ class GrantMonthlyExpensesView(APIView):
                 option_value = bs_call_price(S=share_price, K=strike, T=years_to_end, r=risk_free, sigma=volatility)
             except Exception:
                 option_value = 0.0
-            option_total = round(iso_nqo * option_value, 2)
         else:
-            option_total = 0.0
+            option_value = 0.0
 
-        # RSUs: FMV × shares
-        rsu_total = round(share_price * rsu, 2) if share_price > 0 and rsu > 0 else 0.0
+        # RSUs: FMV per share (current) — used per vesting period
+        rsu_price = share_price if share_price > 0 else 0.0
 
-        # Common / Preferred: (FMV − purchase) × shares (floor at 0)
+        # Common / Preferred: (FMV − purchase) per share (allow negative) — per vesting period
         raw_pp = grant.purchase_price  # Decimal or None
         purchase_price = float(raw_pp) if raw_pp is not None else share_price
-        disc = max(share_price - purchase_price, 0.0)
+        stock_diff = share_price - purchase_price  # can be negative
 
-        common_total = round(disc * common, 2) if common > 0 else 0.0
-        pref_total   = round(disc * pref,   2) if pref   > 0 else 0.0
-
-        total_value = round(option_total + rsu_total + common_total + pref_total, 2)
-
-        # 3) Last month to include
-        if pref and not (grant.vesting_start and grant.vesting_end):
-            last_month = self.start_of_month(grant.grant_date)
-        elif grant.vesting_end:
-            last_month = self.start_of_month(grant.vesting_end)
-        else:
-            last_month = self.start_of_month(grant.grant_date)
-
-        # 4) Allocate across months
+        # 3) Build monthly allocation from the actual vesting schedule
         monthly = defaultdict(float)
-
-        if total_value == 0.0:
-            months_out = [{"month": m.strftime("%Y-%m"), "expense": 0.0}
-                          for m in self.each_month(current_month, last_month)]
-            return Response({
-                "employee_unique_id": grant.user.unique_id,
-                "grant_id": grant.id,
-                "stock_class": getattr(grant.stock_class, "name", "N/A"),
-                "start_month": current_month.strftime("%Y-%m"),
-                "end_month": last_month.strftime("%Y-%m"),
-                "total_expense_fair_value": 0.0,
-                "months": months_out,
-                "grand_total_within_window": 0.0,
-            })
-
-        # Immediate-vest cases
-        stock_units = rsu + common + pref
-        if (pref > 0 and not (grant.vesting_start and grant.vesting_end)) \
-           or (stock_units > 0 and not (grant.vesting_start and grant.vesting_end) and iso_nqo == 0):
-            mkey = self.start_of_month(grant.grant_date)
-            if mkey >= current_month:
-                monthly[mkey] += total_value
+        schedule = grant.vesting_schedule_breakdown()
+        if schedule:
+            # last month comes from schedule
+            last_sched_date = max([date.fromisoformat(p["date"]) for p in schedule])
+            last_month = self.start_of_month(last_sched_date)
+            for p in schedule:
+                period_dt = date.fromisoformat(p["date"])
+                mkey = self.start_of_month(period_dt)
+                if mkey < current_month:
+                    continue
+                # Shares vesting this period by type
+                opt_vested   = int(p.get("iso", 0)) + int(p.get("nqo", 0))
+                rsu_vested   = int(p.get("rsu", 0))
+                common_vested= int(p.get("common", 0))
+                pref_vested  = int(p.get("preferred", 0))
+                # Per-period expense = sum by bucket
+                amt = 0.0
+                if opt_vested:
+                    amt += opt_vested * option_value
+                if rsu_vested:
+                    amt += rsu_vested * rsu_price
+                if (common_vested or pref_vested):
+                    amt += (common_vested + pref_vested) * stock_diff
+                monthly[mkey] += amt
+            # compute total_value off schedule so it sums to the periodized amounts
+            total_value = round(sum(monthly.values()), 2)
         else:
-            # Straight-line amortization
-            if grant.vesting_start and grant.vesting_end and grant.vesting_end > grant.vesting_start:
-                months = self.count_months(grant.vesting_start, grant.vesting_end) + 1
-                if months <= 0:
-                    mkey = self.start_of_month(grant.vesting_start or grant.grant_date)
+            # Fallback to prior straight-line behavior when no schedule exists
+            # (kept for backward compatibility)
+            # Options total
+            option_total = round(iso_nqo * option_value, 2) if iso_nqo > 0 else 0.0
+            # RSU total
+            rsu_total = round(rsu_price * rsu, 2) if rsu > 0 else 0.0
+            # Stock total
+            common_total = round(stock_diff * common, 2) if common > 0 else 0.0
+            pref_total   = round(stock_diff * pref,   2) if pref   > 0 else 0.0
+            total_value = round(option_total + rsu_total + common_total + pref_total, 2)
+
+            if pref and not (grant.vesting_start and grant.vesting_end):
+                last_month = self.start_of_month(grant.grant_date)
+            elif grant.vesting_end:
+                last_month = self.start_of_month(grant.vesting_end)
+            else:
+                last_month = self.start_of_month(grant.grant_date)
+
+            if total_value != 0.0:
+                if (pref > 0 and not (grant.vesting_start and grant.vesting_end)) \
+                   or ((rsu + pref) > 0 and not (grant.vesting_start and grant.vesting_end) and iso_nqo == 0):
+                    mkey = self.start_of_month(grant.grant_date)
                     if mkey >= current_month:
                         monthly[mkey] += total_value
                 else:
-                    per_month = total_value / months
-                    first = self.start_of_month(grant.vesting_start)
-                    for m in self.each_month(first, grant.vesting_end):
-                        if m < current_month:
-                            continue
-                        if m > last_month:
-                            break
-                        monthly[m] += per_month
-            else:
-                mkey = self.start_of_month(grant.grant_date)
-                if mkey >= current_month:
-                    monthly[mkey] += total_value
+                    if grant.vesting_start and grant.vesting_end and grant.vesting_end > grant.vesting_start:
+                        months = self.count_months(grant.vesting_start, grant.vesting_end) + 1
+                        per_month = total_value / months if months > 0 else total_value
+                        first = self.start_of_month(grant.vesting_start)
+                        for m in self.each_month(first, grant.vesting_end):
+                            if m < current_month:
+                                continue
+                            if m > last_month:
+                                break
+                            monthly[m] += per_month
+                    else:
+                        mkey = self.start_of_month(grant.grant_date)
+                        if mkey >= current_month:
+                            monthly[mkey] += total_value
 
-        # 5) Build response
+        # 4) Build response
         months_out = []
         grand = 0.0
         for m in self.each_month(current_month, last_month):
@@ -497,7 +507,7 @@ class GrantMonthlyExpensesView(APIView):
             "stock_class": getattr(grant.stock_class, "name", "N/A"),
             "start_month": current_month.strftime("%Y-%m"),
             "end_month": last_month.strftime("%Y-%m"),
-            "total_expense_fair_value": total_value,
+            "total_expense_fair_value": round(sum(v for v in monthly.values()), 2),
             "months": months_out,
             "grand_total_within_window": round(grand, 2),
         })
@@ -533,34 +543,63 @@ class CompanyMonthlyExpensesView(APIView):
             common  = grant.common_shares or 0
             pref    = grant.preferred_shares or 0
 
-            # Options: Black–Scholes
+            # Compute PER-UNIT prices
             strike = float(grant.strike_price or 0.0)
             if iso_nqo > 0 and share_price > 0 and strike > 0 and sigma > 0:
                 horizon_end = grant.vesting_end or today
                 T_years = max((horizon_end - today).days, 0) / 365.0
                 try:
-                    bso_per = bs_call_price(S=share_price, K=strike, T=T_years, r=r, sigma=sigma)
+                    option_per = bs_call_price(S=share_price, K=strike, T=T_years, r=r, sigma=sigma)
                 except Exception:
-                    bso_per = 0.0
-                option_total = round(iso_nqo * bso_per, 2)
+                    option_per = 0.0
             else:
-                option_total = 0.0
+                option_per = 0.0
 
-            # RSUs: FMV × shares
-            rsu_total = round(share_price * rsu, 2) if share_price > 0 and rsu > 0 else 0.0
-
-            # Common / Preferred: (FMV − purchase) × shares (floor at 0)
+            rsu_per = share_price if share_price > 0 else 0.0
             raw_pp = grant.purchase_price
             purchase_price = float(raw_pp) if raw_pp is not None else share_price
-            disc = max(share_price - purchase_price, 0.0)
+            stock_diff = share_price - purchase_price  # can be negative
 
-            common_total = round(disc * common, 2) if common > 0 else 0.0
-            pref_total   = round(disc * pref,   2) if pref   > 0 else 0.0
+            # Allocate by actual vesting schedule
+            schedule = grant.vesting_schedule_breakdown()
+            if schedule:
+                last_sched_date = max([date.fromisoformat(p["date"]) for p in schedule])
+                last_month = GrantMonthlyExpensesView.start_of_month(last_sched_date)
+                if last_month > latest_last_month:
+                    latest_last_month = last_month
 
-            total_value = round(option_total + rsu_total + common_total + pref_total, 2)
+                total_for_grant = 0.0
+                for p in schedule:
+                    mkey = GrantMonthlyExpensesView.start_of_month(date.fromisoformat(p["date"]))
+                    if mkey < start_month:
+                        continue
+                    opt_vested   = int(p.get("iso", 0)) + int(p.get("nqo", 0))
+                    rsu_vested   = int(p.get("rsu", 0))
+                    common_vested= int(p.get("common", 0))
+                    pref_vested  = int(p.get("preferred", 0))
+
+                    amt = 0.0
+                    if opt_vested:
+                        amt += opt_vested * option_per
+                    if rsu_vested:
+                        amt += rsu_vested * rsu_per
+                    if (common_vested or pref_vested):
+                        amt += (common_vested + pref_vested) * stock_diff
+
+                    monthly_totals[mkey] += amt
+                    total_for_grant += amt
+
+                company_total_fair_value += total_for_grant
+                return
+
+            # Fallback to previous straight-line allocation when no schedule
+            option_total = round(option_per * iso_nqo, 2) if iso_nqo > 0 else 0.0
+            rsu_total    = round(rsu_per * rsu, 2) if rsu > 0 else 0.0
+            common_total = round(stock_diff * common, 2) if common > 0 else 0.0
+            pref_total   = round(stock_diff * pref,   2) if pref   > 0 else 0.0
+            total_value  = round(option_total + rsu_total + common_total + pref_total, 2)
             company_total_fair_value += total_value
 
-            # Determine last month for this grant
             if pref and not (grant.vesting_start and grant.vesting_end):
                 last_month = GrantMonthlyExpensesView.start_of_month(grant.grant_date)
             elif grant.vesting_end:
@@ -574,30 +613,23 @@ class CompanyMonthlyExpensesView(APIView):
             if total_value == 0.0:
                 return
 
-            # Immediate-vest
-            stock_units = rsu + common + pref
+            stock_units = rsu + pref
             if (pref > 0 and not (grant.vesting_start and grant.vesting_end)) or \
                (stock_units > 0 and not (grant.vesting_start and grant.vesting_end) and iso_nqo == 0):
                 mkey = GrantMonthlyExpensesView.start_of_month(grant.grant_date)
                 if mkey >= start_month:
                     monthly_totals[mkey] += total_value
             else:
-                # Straight-line amortization
                 if grant.vesting_start and grant.vesting_end and grant.vesting_end > grant.vesting_start:
                     months = GrantMonthlyExpensesView.count_months(grant.vesting_start, grant.vesting_end) + 1
-                    if months <= 0:
-                        mkey = GrantMonthlyExpensesView.start_of_month(grant.vesting_start or grant.grant_date)
-                        if mkey >= start_month:
-                            monthly_totals[mkey] += total_value
-                    else:
-                        per_month = total_value / months
-                        first = GrantMonthlyExpensesView.start_of_month(grant.vesting_start)
-                        for m in GrantMonthlyExpensesView.each_month(first, grant.vesting_end):
-                            if m < start_month:
-                                continue
-                            if m > last_month:
-                                break
-                            monthly_totals[m] += per_month
+                    per_month = total_value / months if months > 0 else total_value
+                    first = GrantMonthlyExpensesView.start_of_month(grant.vesting_start)
+                    for m in GrantMonthlyExpensesView.each_month(first, grant.vesting_end):
+                        if m < start_month:
+                            continue
+                        if m > last_month:
+                            break
+                        monthly_totals[m] += per_month
                 else:
                     mkey = GrantMonthlyExpensesView.start_of_month(grant.grant_date)
                     if mkey >= start_month:
@@ -619,7 +651,7 @@ class CompanyMonthlyExpensesView(APIView):
             "company_id": company.id,
             "start_month": start_month.strftime("%Y-%m"),
             "end_month": latest_last_month.strftime("%Y-%m"),
-            "total_expense_fair_value": round(company_total_fair_value, 2),
+            "total_expense_fair_value": round(sum(v for v in monthly_totals.values()), 2),
             "months": months_out,
             "grand_total_within_window": round(grand, 2),
         })

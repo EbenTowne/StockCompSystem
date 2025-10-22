@@ -53,37 +53,113 @@ def clamp(n: int, lo: int, hi: int) -> int:
 class SeriesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Series
-        fields = ['id', 'name', 'share_type', 'created_at']
+        fields = ["id", "name", "share_type"]
 
 # ────────────────────────────────
 #  CREATE CLASSES FOR STOCK ALLOC
 # ────────────────────────────────
 class StockClassSerializer(serializers.ModelSerializer):
+    # Computed helpers (unchanged)
     shares_allocated = serializers.IntegerField(read_only=True)
     shares_remaining = serializers.IntegerField(read_only=True)
+
+    # Read-only nested series for UI
     series = SeriesSerializer(read_only=True)
+
+    # Class share_type mirrors selected series (read-only to API)
+    share_type = serializers.CharField(read_only=True)
+
+    # Require selecting a Series by id (scoped in __init__)
     series_id = serializers.PrimaryKeyRelatedField(
-        queryset=Series.objects.all(), source='series', write_only=True, required=False, allow_null=True, default=None,help_text="Leave blank for ISO/NQO/RSU share pools. Only required for preferred/common rounds."
+        source="series",
+        queryset=Series.objects.none(),   # set in __init__,
+        write_only=True,
+        required=True,
+        help_text="Provide the Series by id (scoped to your company).",
     )
 
     class Meta:
         model = StockClass
         fields = [
-            'id', 'name', 'total_class_shares',
-            'shares_allocated', 'shares_remaining',
-            'series', 'series_id'
+            "id",
+            "name",
+            "share_type",           # read-only, inferred from series
+            "total_class_shares",
+            "shares_allocated",
+            "shares_remaining",
+            "series",               # read-only nested
+            "series_id",            # write-only (required)
         ]
 
-    def validate_total_class_shares(self, value):
-        request = self.context['request']
-        company = request.user.profile.company
-        others = company.stock_classes.exclude(pk=self.instance.pk) if self.instance else company.stock_classes.all()
-        if sum(c.total_class_shares for c in others) + value > company.total_authorized_shares:
-            raise serializers.ValidationError(
-                f"Total across classes cannot exceed market cap ({company.total_authorized_shares})"
-            )
-        return value
-        return value
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        company = getattr(getattr(getattr(request, "user", None), "profile", None), "company", None)
+        if company:
+            self.fields["series_id"].queryset = Series.objects.filter(company=company)
+
+    def _company_and_instance(self):
+        request = self.context.get("request")
+        company = getattr(getattr(getattr(request, "user", None), "profile", None), "company", None)
+        if not company:
+            raise serializers.ValidationError("Unable to determine your company.")
+        return company, getattr(self, "instance", None)
+
+    def validate(self, attrs):
+        """
+        Enforce: sum(company.stock_classes.total_class_shares) <= company.total_authorized_shares
+        Works for both create and update.
+        """
+        # Ensure a series is provided (defensive)
+        if not attrs.get("series") and not getattr(getattr(self, "instance", None), "series", None):
+            raise serializers.ValidationError({"series": "Series is required."})
+
+        company, instance = self._company_and_instance()
+
+        # What will the new total_class_shares be for this row?
+        new_shares = attrs.get("total_class_shares")
+        if new_shares is None and instance is not None:
+            new_shares = instance.total_class_shares or 0
+        new_shares = int(new_shares or 0)
+
+        # Sum all other classes in the company (exclude self on update)
+        qs = company.stock_classes.all()
+        if instance is not None:
+            qs = qs.exclude(pk=instance.pk)
+
+        other_total = qs.aggregate(total=Sum("total_class_shares"))["total"] or 0
+        proposed_company_total = int(other_total) + int(new_shares)
+
+        cap = int(company.total_authorized_shares or 0)
+        if cap and proposed_company_total > cap:
+            remaining = max(0, cap - int(other_total))
+            raise serializers.ValidationError({
+                "total_class_shares": (
+                    f"Allocation exceeds company Total Authorized Shares "
+                    f"({cap:,}). You can allocate at most {remaining:,} shares to this class."
+                )
+            })
+
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        company = getattr(getattr(getattr(request, "user", None), "profile", None), "company", None)
+        if not company:
+            raise serializers.ValidationError("Unable to determine your company.")
+
+        series = validated_data["series"]
+        # mirror series share type
+        validated_data["share_type"] = series.share_type
+        validated_data["company"] = company
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # keep class type in sync if series changes
+        series = validated_data.get("series", instance.series)
+        validated_data["share_type"] = series.share_type
+        validated_data.pop("company", None)  # company immutable via API
+        return super().update(instance, validated_data)
 
 # ────────────────────────────────
 #  CREATE STOCK OPTION / GRANT
@@ -93,13 +169,12 @@ class EquityGrantSerializer(serializers.ModelSerializer):
         queryset=UserProfile.objects.all(), slug_field='unique_id', write_only=True
     )
     stock_class = serializers.SlugRelatedField(
-        queryset=StockClass.objects.none(),  # set at runtime
+        queryset=StockClass.objects.none(),
         slug_field='name',
         write_only=True,
     )
     vesting_frequency = serializers.ChoiceField(
-        choices=EquityGrant.VESTING_FREQUENCIES,
-        default='MONTHLY'
+        choices=EquityGrant.VESTING_FREQUENCIES, default='MONTHLY'
     )
     cliff_months = serializers.SerializerMethodField()
     shares_per_period = serializers.SerializerMethodField()
@@ -107,66 +182,97 @@ class EquityGrantSerializer(serializers.ModelSerializer):
     class Meta:
         model = EquityGrant
         fields = [
-            'id', 'user', 'stock_class',
-            'num_shares', 'iso_shares', 'nqo_shares', 'rsu_shares',
-            'common_shares', 'preferred_shares',
-            'strike_price', 'purchase_price', 'grant_date',
-            'vesting_start', 'vesting_end',
-            'cliff_months', 'vesting_frequency', 'shares_per_period',
+            'id','user','stock_class',
+            'num_shares','iso_shares','nqo_shares','rsu_shares',
+            'common_shares','preferred_shares',
+            'strike_price','purchase_price','grant_date',
+            'vesting_start','vesting_end',
+            'cliff_months','vesting_frequency','shares_per_period',
         ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and hasattr(request.user, 'profile'):
-            company = request.user.profile.company
+        req = self.context.get('request')
+        if req and hasattr(req.user, 'profile'):
+            company = req.user.profile.company
             self.fields['stock_class'].queryset = StockClass.objects.filter(company=company)
 
     def validate(self, data):
-        total = data.get('num_shares', getattr(self.instance, 'num_shares', 0))
-        iso = data.get('iso_shares', getattr(self.instance, 'iso_shares', 0))
-        nqo = data.get('nqo_shares', getattr(self.instance, 'nqo_shares', 0))
-        rsu = data.get('rsu_shares', getattr(self.instance, 'rsu_shares', 0))
-        common = data.get('common_shares', getattr(self.instance, 'common_shares', 0))
-        pref = data.get('preferred_shares', getattr(self.instance, 'preferred_shares', 0))
+        total   = data.get('num_shares', getattr(self.instance, 'num_shares', 0)) or 0
+        iso     = data.get('iso_shares', getattr(self.instance, 'iso_shares', 0)) or 0
+        nqo     = data.get('nqo_shares', getattr(self.instance, 'nqo_shares', 0)) or 0
+        rsu     = data.get('rsu_shares', getattr(self.instance, 'rsu_shares', 0)) or 0
+        common  = data.get('common_shares', getattr(self.instance, 'common_shares', 0)) or 0
+        pref    = data.get('preferred_shares', getattr(self.instance, 'preferred_shares', 0)) or 0
 
-        if iso + nqo + rsu + common + pref != total:
-            raise serializers.ValidationError({'num_shares':
-                "Sum of ISO, NQO, RSU, Common, Preferred must equal total_shares"
-            })
-        if pref and (iso or nqo or rsu or common):
-            raise serializers.ValidationError({'preferred_shares':
-                "Preferred shares cannot be mixed with ISO/NQO/RSU/Common"
-            })
-        if rsu and (iso or nqo):
+        # Exclusivity
+        if iso and nqo:
+            raise serializers.ValidationError({"nqo_shares": "ISO and NQO cannot exist in the same grant."})
+
+        buckets = [iso, nqo, rsu, common, pref]
+        if sum(1 for b in buckets if b > 0) != 1 or (iso + nqo + rsu + common + pref) != total:
             raise serializers.ValidationError({
-                'rsu_shares': "RSUs cannot be mixed with ISO or NQO shares in the same grant."
-            })
-        
-
-        sp = data.get('strike_price', getattr(self.instance, 'strike_price', None))
-        pp = data.get('purchase_price', getattr(self.instance, 'purchase_price', None))
-
-        if (iso or nqo) and (not sp or sp <= 0):
-            raise serializers.ValidationError({'strike_price':
-                "Must provide a positive strike price for ISO/NQO/RSU grants"
+                "num_shares": "Grant must represent one exclusive share type and total must equal num_shares."
             })
 
-        if rsu and sp and (sp > 0 or sp < 0):
-            raise serializers.ValidationError({
-                'strike_price': "RSUs must not have a strike price greater than 0."
-            })
+        # Pricing rules
+        strike  = data.get('strike_price', getattr(self.instance, 'strike_price', None))
+        purch   = data.get('purchase_price', getattr(self.instance, 'purchase_price', None))
+
+        if iso or nqo:
+            if not strike or strike <= 0:
+                raise serializers.ValidationError({"strike_price": "ISO/NQO require positive strike_price."})
+            if purch and purch > 0:
+                raise serializers.ValidationError({"purchase_price": "ISO/NQO cannot have purchase_price."})
+
+        if rsu:
+            if strike and strike > 0:
+                raise serializers.ValidationError({"strike_price": "RSUs cannot have strike_price."})
+            if purch and purch > 0:
+                raise serializers.ValidationError({"purchase_price": "RSUs cannot have purchase_price."})
 
         if common:
-            if not (sp and sp > 0) and not (pp and pp > 0):
-                raise serializers.ValidationError({'common_shares':
-                    "Common shares require either a strike price or purchase price"
-                })
+            if not purch or purch <= 0:
+                raise serializers.ValidationError({"purchase_price": "Common shares require purchase_price."})
+            if strike and strike > 0:
+                raise serializers.ValidationError({"strike_price": "Common shares cannot have strike_price."})
 
-        if pref and (not pp or pp <= 0):
-            raise serializers.ValidationError({'purchase_price':
-                "Preferred shares require a positive purchase price"
-            })
+        if pref:
+            if not purch or purch <= 0:
+                raise serializers.ValidationError({"purchase_price": "Preferred shares require purchase_price."})
+            if strike and strike > 0:
+                raise serializers.ValidationError({"strike_price": "Preferred shares cannot have strike_price."})
+
+        # Class/series consistency
+        stock_class = data.get("stock_class", getattr(self.instance, "stock_class", None))
+        if stock_class and isinstance(stock_class, StockClass):
+            if pref and stock_class.share_type != "PREFERRED":
+                raise serializers.ValidationError({"stock_class": "Preferred grants must use Preferred class/series."})
+            if (iso or nqo or rsu or common) and stock_class.share_type != "COMMON":
+                raise serializers.ValidationError({"stock_class": "ISO/NQO/RSU/Common grants must use Common class/series."})
+
+        vs, ve = data.get("vesting_start"), data.get("vesting_end")
+        if vs and ve and ve < vs:
+            raise serializers.ValidationError({"vesting_end": "vesting_end must be after vesting_start."})
+
+        # ── NEW: Enforce stock-class allocation cap ───────────────────────────
+        # Do not allow this grant to push the class beyond total_class_shares.
+        sc = stock_class
+        if sc:
+            qs = sc.equity_grants.all()
+            if self.instance and getattr(self.instance, "pk", None):
+                qs = qs.exclude(pk=self.instance.pk)
+            already = qs.aggregate(total=Sum("num_shares"))["total"] or 0
+            proposed = int(already) + int(total)
+            if proposed > int(sc.total_class_shares or 0):
+                remaining = max(0, int(sc.total_class_shares or 0) - int(already))
+                raise serializers.ValidationError({
+                    "num_shares": (
+                        f"Insufficient shares in class '{sc.name}'. "
+                        f"Remaining: {remaining:,}; requested: {int(total):,}."
+                    )
+                })
+        # ──────────────────────────────────────────────────────────────────────
 
         return data
 
@@ -181,17 +287,14 @@ class EquityGrantSerializer(serializers.ModelSerializer):
         if not obj.vesting_start or not obj.vesting_end or obj.num_shares == 0:
             return 0
         rd = relativedelta(obj.vesting_end, obj.vesting_start)
-        freq = obj.vesting_frequency.lower()
+        freq = (obj.vesting_frequency or '').lower()
         days = (obj.vesting_end - obj.vesting_start).days
-        if freq == 'daily':    units = days
+        if freq == 'daily': units = days
         elif freq == 'weekly': units = days // 7
         elif freq == 'biweekly': units = days // 14
         elif freq == 'yearly': units = rd.years
         else: units = rd.years * 12 + rd.months
         return obj.num_shares // units if units > 0 else 0
-
-    def create(self, validated_data):
-        return super().create(validated_data)
 
 # ────────────────────────────────
 #  GENERATE CAP TABLE FOR ALL GRANT INFO
@@ -208,6 +311,7 @@ class CapTableSerializer(serializers.Serializer):
     preferred_shares = serializers.IntegerField()
     total_shares = serializers.IntegerField()
     strike_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
+    purchase_price = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)  # ← ADDED
     ownership_pct = serializers.FloatField()
     vesting_start = serializers.SerializerMethodField()
     vesting_end   = serializers.SerializerMethodField()
@@ -296,9 +400,8 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    # ---------- simple accessors ----------
+    # ---------- simple accessors (unchanged) ----------
     def get_fmv(self, obj):
-        # obj.user is a UserProfile; company is a direct relation
         company = getattr(obj.user, "company", None)
         if not company:
             return None
@@ -308,7 +411,6 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
         return val
 
     def get_grant_date(self, obj):
-        # Use the actual grant issue date
         return obj.grant_date
 
     def get_cliff_months(self, obj) -> int:
@@ -319,17 +421,10 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
              else relativedelta(obj.vesting_start, today)
         return rd.years * 12 + rd.months
 
-    def get_shares_per_period(self, obj) -> int:
-        units = self._units_total(obj)
-        total = int(obj.num_shares or 0)
-        return (total // units) if units > 0 else 0
-
-    # ---------- unit-aware vesting math ----------
-    # Use days/weeks/biweekly/yearly; for short schedules (< 31 days) always vest by days.
+    # ---------- vesting unit helpers (unchanged) ----------
     def _units_total(self, g) -> int:
         if not g.vesting_start or not g.vesting_end:
             return 0
-
         start, end = g.vesting_start, g.vesting_end
         days_total = (end - start).days
         freq = (g.vesting_frequency or "").lower()
@@ -347,20 +442,16 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
         if freq == "yearly":
             return max(rd.years, 1)
 
-        # default monthly
         months = rd.years * 12 + rd.months
         return max(months, 1)
 
     def _units_elapsed(self, g, today: date) -> int:
         if not g.vesting_start:
             return 0
-
         cliff_months = int(getattr(g, "cliff_months", 0) or 0)
         start_after_cliff = g.vesting_start + relativedelta(months=+cliff_months)
-
         if today < start_after_cliff:
             return 0
-
         end = g.vesting_end or today
         stop = min(today, end)
         days_elapsed = (stop - start_after_cliff).days
@@ -379,39 +470,36 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
         months = rd.years * 12 + rd.months
         return max(months, 0)
 
-    def _linear_vested(self, g, today: date) -> int:
-        total_shares = int(g.num_shares or 0)
-        if total_shares <= 0:
-            return 0
-
-        total_units = self._units_total(g)
-        if total_units <= 0:
-            return 0
-
-        elapsed_units = self._units_elapsed(g, today)
-        elapsed_units = min(max(elapsed_units, 0), total_units)
-
-        return (total_shares * elapsed_units) // total_units  # floor to whole shares
-
+    # ---------- CHANGES START HERE ----------
     def get_vested_shares(self, obj) -> int:
-        return self._linear_vested(obj, date.today())
+        # Trust the model (handles Preferred immediate vest)
+        return int(obj.vested_shares())
 
     def get_unvested_shares(self, obj) -> int:
         total = int(obj.num_shares or 0)
         return max(0, total - self.get_vested_shares(obj))
 
-    # Keep these as months for display
     def get_vesting_period_months(self, obj) -> int:
+        # Preferred immediate → no period
+        if (obj.preferred_shares or 0) > 0:
+            return 0
         if not obj.vesting_start or not obj.vesting_end:
             return 0
-        return months_between(obj.vesting_start, obj.vesting_end)
+        rd = relativedelta(obj.vesting_end, obj.vesting_start)
+        return rd.years * 12 + rd.months
 
     def get_remaining_vesting_months(self, obj) -> int:
+        if (obj.preferred_shares or 0) > 0:
+            return 0
         if not obj.vesting_end:
             return 0
-        return max(0, months_between(date.today(), obj.vesting_end))
+        today = date.today()
+        rd = relativedelta(obj.vesting_end, today)
+        return max(rd.years * 12 + rd.months, 0)
 
     def get_vesting_status(self, obj) -> str:
+        if (obj.preferred_shares or 0) > 0:
+            return "Preferred Shares (Immediate Vest)"
         vested = self.get_vested_shares(obj)
         total = int(obj.num_shares or 0)
         if vested <= 0:
@@ -419,8 +507,9 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
         if vested >= total > 0:
             return "Fully Vested"
         return "Partially Vested"
+    # ---------- CHANGES END HERE ----------
 
-    # ---------- value math ----------
+    # ---------- value math (unchanged) ----------
     def _bucket_prices(self, obj) -> tuple[Decimal, Decimal, Decimal]:
         strike   = Decimal(str(obj.strike_price or 0))
         purchase = Decimal(str(obj.purchase_price or 0))
@@ -428,13 +517,6 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
         return strike, purchase, fmv
 
     def get_vested_value(self, obj):
-        """
-        Price vested shares by type:
-          ISO/NQO -> strike_price
-          RSU     -> FMV
-          Common/Preferred -> purchase_price
-        Allocates vested shares proportionally when mixed.
-        """
         total = int(obj.num_shares or 0)
         vested_total = int(self.get_vested_shares(obj) or 0)
         if total <= 0 or vested_total <= 0:
@@ -462,11 +544,16 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
         ).quantize(Decimal("0.01"))
         return float(value)
 
-    # ---------- per-period convenience for UI ----------
-    def get_per_period_shares(self, obj) -> int:
+    # per-period helpers (unchanged, with Preferred handled above)
+    def get_shares_per_period(self, obj) -> int:
+        if (obj.preferred_shares or 0) > 0:
+            return int(obj.num_shares or 0)
         units = self._units_total(obj)
         total = int(obj.num_shares or 0)
         return (total // units) if units > 0 else 0
+
+    def get_per_period_shares(self, obj) -> int:
+        return self.get_shares_per_period(obj)
 
     def get_per_period_value(self, obj):
         shares = self.get_per_period_shares(obj)
@@ -491,8 +578,6 @@ class EmployeeGrantDetailSerializer(serializers.ModelSerializer):
             ) / total
 
         return float((Decimal(shares) * price).quantize(Decimal("0.01")))
-# Alias so your list view can reference a dedicated name if you prefer
-MyGrantsListSerializer = EmployeeGrantDetailSerializer
 
 # ────────────────────────────────
 #  GENERATE CAP TABLE CONTAINING BLACK SCHOLES INFO

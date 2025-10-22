@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import date, timedelta
 from django.db import models
 from django.utils import timezone
@@ -13,43 +14,72 @@ class Series(models.Model):
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
-        related_name='series'
+        related_name="series_set",
     )
-    name = models.CharField(max_length=255)
-    share_type = models.CharField(max_length=100, choices=SHARE_TYPE_CHOICES)
+    name = models.CharField(max_length=128)
+    share_type = models.CharField(max_length=16, choices=SHARE_TYPE_CHOICES, default="COMMON")
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return self.name
+    class Meta:
+        unique_together = [("company", "name")]
+        ordering = ["company_id", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.company.name} · {self.name}"
 
 class StockClass(models.Model):
     company = models.ForeignKey(
-        'accounts.Company',
+        Company,
         on_delete=models.CASCADE,
-        related_name='stock_classes'
+        related_name="stock_classes",
     )
-    name = models.CharField(max_length=100)
-    total_class_shares = models.PositiveIntegerField()
+
+    # REQUIRED link to Series; CASCADE on delete
     series = models.ForeignKey(
         Series,
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name='stock_classes'
+        on_delete=models.CASCADE,           # delete Series -> delete its classes
+        related_name="stock_classes"
     )
 
-    def __str__(self):
-        return f"{self.name}"
+    # ← NEW: Class type always mirrors its linked Series type
+    share_type = models.CharField(
+        max_length=16,
+        choices=[("COMMON", "Common Stock"), ("PREFERRED", "Preferred Stock")],
+        editable=False,
+    )
+
+    name = models.CharField(max_length=128)
+    total_class_shares = models.PositiveIntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("company", "name")]
+        ordering = ["company_id", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.company.name} · {self.name} ({self.series.name})"
+
+    def save(self, *args, **kwargs):
+        # keep share_type in sync with the linked series
+        if self.series_id:
+            self.share_type = self.series.share_type
+        super().save(*args, **kwargs)
+
+    # ----- If your project tracks allocated shares via grants, keep these helpers.
+    # They won't break anything if you don't reference them elsewhere.
+    @property
+    def shares_allocated(self) -> int:
+        # If you have EquityGrant model with FK "stock_class" and field "num_shares",
+        # this will compute the allocated total. Otherwise, return 0.
+        try:
+            return self.equity_grants.aggregate(total=models.Sum("num_shares"))["total"] or 0
+        except Exception:
+            return 0
 
     @property
-    def shares_allocated(self):
-        return self.equity_grants.aggregate(
-            total=models.Sum('num_shares')
-        )['total'] or 0
-
-    @property
-    def shares_remaining(self):
-        return self.total_class_shares - self.shares_allocated
+    def shares_remaining(self) -> int:
+        return max(0, int(self.total_class_shares) - int(self.shares_allocated))
 
 class EquityGrant(models.Model):
     VESTING_FREQUENCIES = [
@@ -116,7 +146,18 @@ class EquityGrant(models.Model):
     def __str__(self):
         return f"{self.user.unique_id}: {self.num_shares}@{self.stock_class.name}"
 
+    # ─────────────────────────────────────────────────────────
+    # NEW: enforce ISO/NQO exclusivity at the model level
+    # ─────────────────────────────────────────────────────────
+    def clean(self):
+        from django.core.exceptions import ValidationError  # local import to avoid touching headers
+        if (self.iso_shares or 0) > 0 and (self.nqo_shares or 0) > 0:
+            raise ValidationError({
+                "nqo_shares": "ISO and NQO cannot be combined in the same grant. Create separate grants."
+            })
+
     def save(self, *args, **kwargs):
+        # keep your existing cliff auto-calc exactly as-is
         if self.vesting_start:
             today = timezone.now().date()
             if today > self.vesting_start:
@@ -124,6 +165,10 @@ class EquityGrant(models.Model):
                 self.cliff_months = rd.years * 12 + rd.months
             else:
                 self.cliff_months = 0
+
+        # call validations (includes ISO/NQO exclusivity) before saving
+        self.full_clean(exclude=None)
+
         super().save(*args, **kwargs)
 
     @staticmethod
@@ -200,14 +245,9 @@ class EquityGrant(models.Model):
                 "preferred":   total,
                 "total_vested": total,
             }]
-        if (self.common_shares or 0) > 0 and (self.purchase_price is not None):
-            total = int(self.common_shares or 0)
-            return [{
-                "date":        (self.grant_date or self.vesting_start or self.vesting_end).isoformat(),
-                "iso":         0, "nqo": 0, "rsu": 0,
-                "common":      total, "preferred": 0,
-                "total_vested": total,
-            }]
+        # REMOVED: common immediate vest. Common now follows normal schedule.
+        # if (self.common_shares or 0) > 0 and (self.purchase_price is not None):
+        #     ...
 
         # Need both endpoints for a schedule
         if not (self.vesting_start and self.vesting_end):
@@ -287,8 +327,9 @@ class EquityGrant(models.Model):
     def get_vesting_status(self, on_date=None):
         if self.preferred_shares > 0:
             return 'Preferred Shares (Immediate Vest)'
-        if self.common_shares > 0 and self.purchase_price:
-            return 'Purchased Common (Immediate Vest)'
+        # REMOVED: Common “Purchased Immediate Vest” status
+        # if self.common_shares > 0 and self.purchase_price:
+        #     return 'Purchased Common (Immediate Vest)'
         vested = self.vested_shares(on_date)
         if vested == 0:
             return 'Not Vested'

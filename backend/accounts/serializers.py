@@ -14,6 +14,7 @@ All classes are imported by accounts.views, so keep their names.
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from django.db.models import Sum
 from rest_framework.validators import UniqueValidator
 
 from .models import CompanyFinancial, UserProfile, Company, EmployeeInvite
@@ -49,7 +50,31 @@ class CompanySerializer(serializers.ModelSerializer):
             'risk_free_rate',
             'financials'
         ]
-    
+
+    # ── Prevent lowering authorized below allocated ──────────────────────────
+    def validate_total_authorized_shares(self, value: int):
+        """
+        Disallow setting total_authorized_shares below the sum of all existing
+        StockClass.total_class_shares for this company.
+        """
+        instance = getattr(self, "instance", None)
+        if not instance:
+            # On create (if ever used), we can’t compare yet—just return value.
+            return value
+
+        allocated = instance.stock_classes.aggregate(
+            total=Sum("total_class_shares")
+        ).get("total") or 0
+
+        if value is not None and int(value) < int(allocated):
+            raise serializers.ValidationError(
+                f"Current allocated class shares {allocated:,} exceed the proposed "
+                f"Total Authorized Shares {int(value):,}. Increase the cap or reduce "
+                f"class allocations."
+            )
+        return value
+    # ─────────────────────────────────────────────────────────────────────────
+
     def update(self, instance, validated_data):
         # Pull out nested rows if provided
         financial_rows = validated_data.pop("financials", None)

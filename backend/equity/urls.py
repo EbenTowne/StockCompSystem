@@ -19,9 +19,9 @@ from .views import (
 )
 
 urlpatterns = [
-    path('classes/', StockClassListCreateView.as_view(), name='stockclass-list'),
-    path('classes/<int:pk>/', StockClassDetailView.as_view(), name='stockclass-detail'),
-    path('grants/', EquityGrantListCreateView.as_view(), name='equitygrant-list'),
+    path('classes/', StockClassListCreateView.as_view(), name='stockclass-list'), #Set in: Company Metrics
+    path('classes/<int:pk>/', StockClassDetailView.as_view(), name='stockclass-detail'), #View specfic class
+    path('grants/', EquityGrantListCreateView.as_view(), name='equitygrant-list'), #Used to 
     path('grant-ids/<str:unique_id>/', GrantIDListView.as_view(), name='get-grant-ids'),
     path('cap-table/', CapTableView.as_view(), name='cap-table'),
     path('cap-table/bso/', BlackScholesCapTableView.as_view(), name='black-scholes-cap-table'),
