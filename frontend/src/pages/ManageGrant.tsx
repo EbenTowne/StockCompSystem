@@ -1,4 +1,231 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+
+const API = import.meta.env.VITE_API_URL as string;
+
+type GrantListItem = {
+  id: number;
+  stock_class_name: string | null;
+  series_name: string | null;
+  num_shares: number;
+  iso_shares: number;
+  nqo_shares: number;
+  rsu_shares: number;
+  common_shares: number;
+  preferred_shares: number;
+  vesting_status?: string;
+  strike_price: string | null;
+  purchase_price: string | null;
+};
+
+type CompanyResp = { current_fmv: string };
+
 export default function ManageGrants() {
-  return <div>Manage Options</div>;
+  const nav = useNavigate();
+  const [sp, setSp] = useSearchParams();
+  const urlId = sp.get("id") ?? "";
+
+  const [uniqueId, setUniqueId] = useState(urlId);
+  const [items, setItems] = useState<GrantListItem[] | null>(null);
+  const [companyFMV, setCompanyFMV] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // keep Authorization like the list page
+  useEffect(() => {
+    const access = localStorage.getItem("accessToken");
+    if (access) axios.defaults.headers.common["Authorization"] = `Bearer ${access}`;
+  }, []);
+
+  async function load(id: string) {
+    if (!id) return;
+    setLoading(true);
+    setNote(null);
+    try {
+      const grantsUrl = `${API}/equity/employees/${encodeURIComponent(id)}/grants/`;
+      const companyUrl = `${API}/company/`;
+      const [grantsRes, companyRes] = await Promise.all([
+        axios.get(grantsUrl),
+        axios.get<CompanyResp>(companyUrl),
+      ]);
+      setItems(Array.isArray(grantsRes.data) ? grantsRes.data : []);
+      setCompanyFMV(companyRes.data?.current_fmv ?? null);
+    } catch (e: any) {
+      setItems([]);
+      setCompanyFMV(null);
+      setNote({ type: "err", text: apiErr(e) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const id = uniqueId.trim();
+    setSp(id ? { id } : {});
+    void load(id);
+  }
+
+  useEffect(() => {
+    // load automatically if ?id= is present
+    if (urlId) void load(urlId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlId]);
+
+  const hasQuery = useMemo(() => Boolean((uniqueId || urlId).trim()), [uniqueId, urlId]);
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header + inline search */}
+      <div className="mb-4">
+        <h1 className="text-xl font-semibold">Manage Grants</h1>
+        <p className="text-xs text-gray-500 mt-1">
+          Look up an employee by <b>unique_id</b> to view or modify their grants.
+        </p>
+
+        <form onSubmit={onSubmit} className="mt-3 flex items-stretch gap-2 max-w-xl">
+          <input
+            id="emp-uid"
+            autoFocus
+            value={uniqueId}
+            onChange={(e) => setUniqueId(e.target.value)}
+            placeholder="e.g., 1234-567-890"
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+            disabled={!uniqueId.trim()}
+          >
+            Search
+          </button>
+        </form>
+      </div>
+
+      {/* Alerts */}
+      {note && (
+        <div
+          className={`rounded-md border p-3 text-sm mb-5 ${
+            note.type === "ok"
+              ? "border-green-300 text-green-700 bg-green-50"
+              : "border-red-300 text-red-700 bg-red-50"
+          }`}
+        >
+          {note.text}
+        </div>
+      )}
+
+      {/* Results */}
+      {!hasQuery ? (
+        <div className="p-6 bg-white rounded-xl shadow-sm border max-w-xl">
+          <div className="text-sm text-gray-700">
+            Enter an employee <b>unique_id</b> above to see their grants.
+          </div>
+        </div>
+      ) : loading ? (
+        <div className="p-6 bg-white rounded-xl shadow-sm border">Loading…</div>
+      ) : !items?.length ? (
+        <div className="p-6 bg-white rounded-xl shadow-sm border">
+          No grants found for <span className="font-medium">{urlId || uniqueId}</span>.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {items.map((g) => {
+            const type =
+              g.preferred_shares > 0
+                ? "PREFERRED"
+                : g.common_shares > 0
+                ? "COMMON"
+                : g.rsu_shares > 0
+                ? "RSU"
+                : g.iso_shares > 0
+                ? "ISO"
+                : g.nqo_shares > 0
+                ? "NQO"
+                : "—";
+
+            const rawPrice = g.rsu_shares > 0 ? companyFMV : (g.strike_price ?? g.purchase_price ?? null);
+            const price = rawPrice != null ? formatMoney(rawPrice) : null;
+
+            const effectiveId = (urlId || uniqueId).trim();
+
+            return (
+              <article key={g.id} className="bg-white rounded-xl shadow hover:shadow-md transition-shadow">
+                <div className="px-4 py-3 space-y-2">
+                  <StatRow label="Class" value={g.stock_class_name ?? "—"} />
+                  <StatRow label="Series" value={g.series_name ?? "—"} />
+                  <StatRow
+                    label="Total Shares"
+                    value={g.num_shares ? g.num_shares.toLocaleString() : "—"}
+                  />
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <Pill label="Type" value={type} />
+                    <Pill label="Status" value={g.vesting_status ?? "—"} />
+                  </div>
+                  <div className="border-t mt-2" />
+                  <StatRow label="Price" value={price ? `$${price}` : "—"} />
+                </div>
+                <div className="px-4 pb-4 pt-2">
+                  <Link
+                    to={`/dashboard/grants/${encodeURIComponent(effectiveId)}/${g.id}`}
+                    className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 w-full"
+                  >
+                    Select
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className="text-sm font-medium text-gray-900">{value}</span>
+    </div>
+  );
+}
+
+function Pill({ label, value }: { label: string; value: React.ReactNode }) {
+  let displayValue = String(value ?? "—").trim();
+  const lower = displayValue.toLowerCase();
+  if (lower.includes("immediate vest")) displayValue = "Immediate Vesting";
+  else if (lower.includes("fully vested")) displayValue = "Fully Vested";
+  else if (lower.includes("not vested")) displayValue = "Not Vested";
+
+  const colorClass =
+    displayValue === "Immediate Vesting" || displayValue === "Fully Vested"
+      ? "text-green-700"
+      : displayValue === "Not Vested"
+      ? "text-gray-700"
+      : "text-gray-800";
+
+  return (
+    <div className="flex items-center justify-between rounded-lg border px-2.5 py-1.5 bg-gray-50">
+      <span className="text-[11px] text-gray-500">{label}</span>
+      <span className={`text-[12px] font-medium ${colorClass}`}>{displayValue}</span>
+    </div>
+  );
+}
+
+function formatMoney(v: string | number): string {
+  const n = typeof v === "string" ? Number(v) : v;
+  if (!Number.isFinite(n)) return "";
+  return n.toFixed(2);
+}
+
+function apiErr(e: any) {
+  const d = e?.response?.data;
+  if (!d) return "Request failed.";
+  if (typeof d === "string") return d;
+  if (d.detail) return d.detail;
+  return Object.entries(d)
+    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
+    .join(" ");
 }

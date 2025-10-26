@@ -193,7 +193,7 @@ export default function CompanyMetrics() {
     share_type: null,
   });
 
-  /** Auth header like InviteEmployee + initial load */
+  /** Auth header + initial load */
   useEffect(() => {
     const access = localStorage.getItem("accessToken");
     if (access) axios.defaults.headers.common["Authorization"] = `Bearer ${access}`;
@@ -452,7 +452,7 @@ export default function CompanyMetrics() {
         </div>
       )}
 
-      {/* ===== Top row: Metrics (left) + Refined Share Allocation (right) ===== */}
+      {/* ===== Top row: Metrics (left) + Share Allocation (right) ===== */}
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Company Metrics */}
         <div className="pt-2">
@@ -557,8 +557,8 @@ export default function CompanyMetrics() {
           </form>
         </div>
 
-        {/* Refined Share Allocation */}
-        <div className="border rounded p-4 bg-white">
+        {/* Share Allocation (centered & slightly lowered) */}
+        <div className="border rounded p-6 bg-white">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-lg font-medium">Share Allocation</h3>
             {authorizedShares > 0 && (
@@ -569,14 +569,17 @@ export default function CompanyMetrics() {
           </div>
 
           {authorizedShares <= 0 ? (
-            <p className="text-sm text-gray-600">Set <b>Total Authorized Shares</b> to see allocation.</p>
+            <p className="text-sm text-gray-600">
+              Set <b>Total Authorized Shares</b> to see allocation.
+            </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-              <div className="flex justify-center sm:justify-end">
+            <div className="flex flex-col items-center justify-center gap-10 sm:flex-row sm:justify-center mt-6 mb-4">
+              {/* Chart */}
+              <div className="flex justify-center">
                 <DonutChart
                   data={pieData}
-                  size={170}            // a bit larger for better legibility on wide screens
-                  thickness={20}        // slightly thinner stroke
+                  size={180}
+                  thickness={22}
                   centerLabel={
                     <div className="leading-tight">
                       <div className="text-[10px] text-gray-500">Authorized</div>
@@ -586,7 +589,8 @@ export default function CompanyMetrics() {
                 />
               </div>
 
-              <div className="min-w-[220px]">
+              {/* Legend */}
+              <div className="min-w-[240px]">
                 <ul className="space-y-1.5">
                   {pieData.map((s, i) => (
                     <li key={i} className="flex items-center justify-between gap-3 text-sm">

@@ -13,14 +13,17 @@ import EmployerLayout from "../components/EmployerLayout"
 import DashboardPage from "../pages/DashboardPage"
 import InviteEmployee from "../pages/InviteEmployee"
 import CreateGrant from "../pages/CreateGrant"
-import ManageGrant from "../pages/ManageGrant"
 import CapTable from "../pages/CapTable"
 import AIChatbot from "../pages/AIChatbot"
 import Expenses from "../pages/Expenses"
 import CompanyMetrics from "../pages/CompanyMetrics"
-import ViewEmployees from "../pages/ViewEmployees";
+import ViewEmployees from "../pages/ViewEmployees"
 
-// NEW: employee registration (public)
+// UPDATED: unified Manage Grants page (search + list)
+import ManageGrants from "../pages/ManageGrant"
+import ManageGrantDetail from "../pages/ManageGrantDetail"
+
+// PUBLIC: employee registration
 import EmployeeRegister from '../pages/EmployeeRegister'
 
 export default function AppRoutes() {
@@ -32,7 +35,7 @@ export default function AppRoutes() {
       <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
       <Route path="/register-employer" element={<RegisterEmployerPage />} />
 
-      {/* NEW: public employee registration page reached from email link */}
+      {/* public employee registration (from email link) */}
       <Route path="/employee/register" element={<EmployeeRegister />} />
 
       {/* employer (with sidebar layout) */}
@@ -47,7 +50,13 @@ export default function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="invite" element={<InviteEmployee />} />
         <Route path="create-grant" element={<CreateGrant />} />
-        <Route path="grants" element={<ManageGrant />} />
+
+        {/* Unified Manage Grants:
+            - /dashboard/grants            -> combined search + list (uses ?id= query)
+            - /dashboard/grants/:uniqueId  -> detail below still uses path params */}
+        <Route path="grants" element={<ManageGrants />} />
+        <Route path="grants/:uniqueId/:grantId" element={<ManageGrantDetail />} />
+
         <Route path="cap-table" element={<CapTable />} />
         <Route path="ai-chatbot" element={<AIChatbot />} />
         <Route path="expenses" element={<Expenses />} />

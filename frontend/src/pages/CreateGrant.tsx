@@ -2,10 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
 // ---- API bases (same style as the rest of your app) ----
-const API = import.meta.env.VITE_API_URL as string;
+const API = import.meta.env.VITE_API_URL as string; // e.g. http://127.0.0.1:8000/api
 const CLASSES_BASE = "/equity/classes/";
 const SERIES_BASE = "/equity/series/";
 const GRANTS_BASE = "/equity/grants/";
+
+// Employees endpoint (works with your DRF view at /api/employees/)
+const EMPLOYEES_URL =
+  (import.meta.env.VITE_EMPLOYEES_URL as string | undefined) || "/employees/";
 
 // ---- Types ----
 type EquitySeries = { id: number; name: string; share_type: "COMMON" | "PREFERRED" };
@@ -18,6 +22,12 @@ type EquityClass = {
   share_type: "COMMON" | "PREFERRED";
   series?: EquitySeries | null;
   shares_remaining?: number;
+};
+
+type Employee = {
+  unique_id: string;
+  name?: string;
+  user?: { first_name?: string; username?: string };
 };
 
 type FormState = {
@@ -41,19 +51,26 @@ type FormState = {
 
 // ---- Helpers ----
 const onlyDigits = (v: string) => v.replace(/\D/g, "");
+
+// Clamp to at most 2 decimals while typing (used for summary text only)
 const money = (v: string) => {
   const cleaned = v.replace(/[^\d.]/g, "");
-  const [i, d = ""] = cleaned.split(".");
-  return i + (d ? "." + d.replace(/\./g, "") : "");
+  const [i = "", d = ""] = cleaned.split(".");
+  const dec = d.slice(0, 2);
+  return d.length ? `${i}.${dec}` : i;
 };
+
 const toInt = (s: string) => {
   const n = Number(String(s).replace(/,/g, ""));
   return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
 };
+
+// Round to exactly 2 decimals on submit
 const toMoney = (s: string) => {
   const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
 };
+
 const errText = (e: any) => {
   const d = e?.response?.data;
   if (!d) return "Unexpected error. Please try again.";
@@ -68,6 +85,7 @@ const errText = (e: any) => {
 export default function CreateGrant() {
   const [series, setSeries] = useState<EquitySeries[]>([]);
   const [classes, setClasses] = useState<EquityClass[]>([]);
+  const [employees, setEmployees] = useState<Employee[] | null>(null); // null = not loaded or failed
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -98,16 +116,43 @@ export default function CreateGrant() {
     void loadOptions();
   }, []);
 
+  async function tryFetchEmployees(): Promise<Employee[] | null> {
+    try {
+      const url = EMPLOYEES_URL.startsWith("http") ? EMPLOYEES_URL : `${API}${EMPLOYEES_URL}`;
+      const er = await axios.get(url);
+      const arr = Array.isArray(er.data) ? er.data : [];
+      const normalized = arr
+        .map((e: any): Employee | null => {
+          const unique_id = e?.unique_id ?? e?.user?.unique_id ?? e?.slug ?? null;
+          if (!unique_id) return null;
+          const name =
+            e?.name ??
+            e?.user?.first_name ??
+            e?.first_name ??
+            e?.display_name ??
+            e?.user?.username ??
+            "";
+          return { unique_id, name, user: e?.user };
+        })
+        .filter(Boolean) as Employee[];
+      return normalized.length ? normalized : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function loadOptions() {
     setLoading(true);
     setNote(null);
     try {
-      const [sr, cr] = await Promise.all([
+      const [sr, cr, emps] = await Promise.all([
         axios.get(`${API}${SERIES_BASE}`),
         axios.get(`${API}${CLASSES_BASE}`),
+        tryFetchEmployees(),
       ]);
       setSeries(Array.isArray(sr.data) ? sr.data : []);
       setClasses(Array.isArray(cr.data) ? cr.data : []);
+      setEmployees(emps); // may be null if call failed
     } catch (e) {
       setNote({ type: "err", text: errText(e) });
     } finally {
@@ -241,7 +286,7 @@ export default function CreateGrant() {
 
   return (
     // Wider container + balanced grid to reduce empty gutters
-    <div className="px-4 md:px-6 py-6 max-w-[1300px] mx-auto">
+    <div className="p-6 space-y-6">
       {/* Header + caption */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -282,13 +327,26 @@ export default function CreateGrant() {
             </div>
             <div className="grid md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm mb-1">Employee ID</label>
-                <input
+                <label className="block text-sm mb-1">Employee</label>
+                <select
                   className="w-full border rounded-lg px-3 py-2"
-                  placeholder="unique_id (e.g., EMP-00123)"
                   value={form.unique_id}
                   onChange={(e) => setField("unique_id", e.target.value)}
-                />
+                >
+                  <option value="">
+                    {Array.isArray(employees) ? "Select…" : "No employees found"}
+                  </option>
+                  {Array.isArray(employees) &&
+                    employees.map((emp) => {
+                      const label =
+                        emp.name || emp.user?.first_name || emp.user?.username || emp.unique_id;
+                      return (
+                        <option key={emp.unique_id} value={emp.unique_id}>
+                          {label}: {emp.unique_id}
+                        </option>
+                      );
+                    })}
+                </select>
               </div>
               <div>
                 <label className="block text-sm mb-1">Stock Class</label>
@@ -372,12 +430,14 @@ export default function CreateGrant() {
                 <label className="block text-sm mb-1">Strike Price (ISO/NQO)</label>
                 <div className="relative">
                   <input
+                    type="number"
+                    step="0.01"
+                    min="0"
                     className="w-full border rounded-lg pl-9 pr-3 py-2"
                     placeholder={needsStrike ? "0.00" : "—"}
-                    inputMode="decimal"
                     disabled={!needsStrike}
-                    value={money(form.strike_price)}
-                    onChange={(e) => setField("strike_price", money(e.target.value))}
+                    value={form.strike_price}
+                    onChange={(e) => setField("strike_price", e.target.value)}
                   />
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
                     $
@@ -388,12 +448,14 @@ export default function CreateGrant() {
                 <label className="block text-sm mb-1">Purchase Price (Stock)</label>
                 <div className="relative">
                   <input
+                    type="number"
+                    step="0.01"
+                    min="0"
                     className="w-full border rounded-lg pl-9 pr-3 py-2"
                     placeholder={needsPurchase ? "0.00" : "—"}
-                    inputMode="decimal"
                     disabled={!needsPurchase}
-                    value={money(form.purchase_price)}
-                    onChange={(e) => setField("purchase_price", money(e.target.value))}
+                    value={form.purchase_price}
+                    onChange={(e) => setField("purchase_price", e.target.value)}
                   />
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
                     $
@@ -455,20 +517,16 @@ export default function CreateGrant() {
             </div>
           </section>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex gap-3">
             <button
               type="submit"
-              className={`rounded-lg px-4 py-2 text-white ${
-                canSubmit ? "bg-black" : "bg-gray-400 cursor-not-allowed"
-              }`}
               disabled={!canSubmit || saving}
+              className={`px-4 py-2 rounded-lg text-white ${canSubmit && !saving ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"}`}
             >
-              {saving ? "Creating…" : "Create Grant"}
+              {saving ? "Saving…" : "Create Grant"}
             </button>
             <button
               type="button"
-              className="rounded-lg px-4 py-2 border"
               onClick={() =>
                 setForm({
                   unique_id: "",
@@ -486,161 +544,59 @@ export default function CreateGrant() {
                   vesting_end: "",
                 })
               }
+              className="px-4 py-2 rounded-lg border"
             >
               Reset
             </button>
           </div>
         </div>
 
-        {/* Right rail */}
+        {/* Right rail (simple summary) */}
         <aside className="space-y-5">
-          {/* Summary */}
-          <div className="bg-white rounded-xl shadow p-4">
-            <h3 className="font-semibold mb-2">Summary</h3>
-            <div className="text-sm space-y-1">
-              <Row label="Employee ID" value={form.unique_id || "—"} />
-              <Row label="Stock Class" value={form.stock_class || "—"} />
-              <Row label="Share Type" value={activeBucket ?? "—"} />
-              <Row
-                label="Total Shares"
-                value={totalShares ? totalShares.toLocaleString() : "—"}
-              />
-              <Row
-                label={needsStrike ? "Strike Price" : "Purchase Price"}
-                value={
-                  needsStrike
-                    ? form.strike_price
-                      ? `$${toMoney(form.strike_price).toFixed(2)}`
-                      : "—"
-                    : needsPurchase
-                    ? form.purchase_price
-                      ? `$${toMoney(form.purchase_price).toFixed(2)}`
-                      : "—"
-                    : "—"
-                }
-              />
-              <Row
-                label="Vesting"
-                value={
-                  preferredImmediate
-                    ? "Immediate"
-                    : form.vesting_start && form.vesting_end
-                    ? `${form.vesting_start} → ${form.vesting_end} (${form.vesting_frequency})`
-                    : "—"
-                }
-              />
+          <section className="bg-white rounded-xl shadow p-4 space-y-2">
+            <h3 className="text-sm font-semibold">Summary</h3>
+            <div className="text-xs text-gray-600 space-y-1">
+              <div><b>Employee:</b> {form.unique_id || "—"}</div>
+              <div><b>Class:</b> {form.stock_class || "—"}</div>
+              <div><b>Type:</b> {activeBucket || "—"}</div>
+              <div><b>Total Shares:</b> {form.num_shares || "0"}</div>
+              {needsStrike && (
+                <div><b>Strike Price:</b> {form.strike_price ? `$${money(form.strike_price)}` : "—"}</div>
+              )}
+              {needsPurchase && (
+                <div><b>Purchase Price:</b> {form.purchase_price ? `$${money(form.purchase_price)}` : "—"}</div>
+              )}
+              {!preferredImmediate && (
+                <>
+                  <div><b>Vesting Start:</b> {form.vesting_start || "—"}</div>
+                  <div><b>Vesting End:</b> {form.vesting_end || "—"}</div>
+                  <div><b>Frequency:</b> {form.vesting_frequency}</div>
+                </>
+              )}
             </div>
-
-            <div className="mt-3 border-t pt-2 text-xs">
-              <ul className="space-y-1">
-                <li
-                  className={
-                    nonZeroBucketCount === 1 ? "text-green-700" : "text-red-700"
-                  }
-                >
-                  Exactly one share type selected
-                </li>
-                <li
-                  className={totalShares > 0 ? "text-green-700" : "text-red-700"}
-                >
-                  Share amount provided
-                </li>
-                {needsStrike && (
-                  <li
-                    className={
-                      toMoney(form.strike_price) > 0
-                        ? "text-green-700"
-                        : "text-red-700"
-                    }
-                  >
-                    Strike Price entered
-                  </li>
-                )}
-                {needsPurchase && (
-                  <li
-                    className={
-                      toMoney(form.purchase_price) > 0
-                        ? "text-green-700"
-                        : "text-red-700"
-                    }
-                  >
-                    Purchase Price entered
-                  </li>
-                )}
-                {!preferredImmediate && (
-                  <li
-                    className={
-                      !form.vesting_start ||
-                      !form.vesting_end ||
-                      form.vesting_end >= form.vesting_start
-                        ? "text-green-700"
-                        : "text-red-700"
-                    }
-                  >
-                    Vesting dates are valid
-                  </li>
-                )}
-              </ul>
-            </div>
-          </div>
-
-          {/* Quick Guide */}
-          <div className="bg-white rounded-xl shadow p-4">
-            <h3 className="font-semibold mb-2">Quick Guide</h3>
-            <ul className="text-sm space-y-2 text-gray-700">
-              <li>
-                <span className="font-medium">Options (ISO/NQO)</span>: buy
-                shares later at the Strike Price.
-              </li>
-              <li>
-                <span className="font-medium">RSUs</span>: shares are granted;
-                no purchase or strike price.
-              </li>
-              <li>
-                <span className="font-medium">Common/Preferred</span>: you
-                purchase shares now at the Purchase Price.
-              </li>
-              <li>
-                <span className="font-medium">Vesting</span>: how ownership
-                unlocks over time. Preferred vests immediately.
-              </li>
-            </ul>
-          </div>
+          </section>
         </aside>
       </form>
     </div>
   );
 }
 
-// ---- Presentational helpers ----
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
-  );
-}
-
-function CardField({
-  label,
-  value,
-  onChange,
-  active,
-}: {
+/** Presentational input card used above */
+function CardField(props: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  active?: boolean;
+  active?: boolean | null;
 }) {
+  const { label, value, onChange, active } = props;
   return (
-    <div className={`rounded-lg border p-3 ${active ? "border-black" : "border-gray-200"}`}>
+    <div className={`rounded-lg border p-3 ${active ? "border-blue-400 bg-blue-50/40" : ""}`}>
       <label className="block text-sm mb-1">{label}</label>
       <input
-        className="w-full border rounded-md px-3 py-2"
-        inputMode="numeric"
+        className="w-full border rounded-lg px-3 py-2"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        inputMode="numeric"
         placeholder="0"
       />
     </div>
