@@ -1,79 +1,214 @@
-import React, { useContext, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import axios from "axios";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import axios, { AxiosError } from "axios";
 import { AuthContext } from "../context/AuthContext";
 
 type Profile = { username?: string; name?: string; email?: string };
 
-// Base URL from .env (fallback to localhost:8000), strip trailing slashes
-const RAW_API = (import.meta as any)?.env?.VITE_API_URL || "http://127.0.0.1:8000";
+// ---------- Config ----------
+const RAW_API =
+  (import.meta as any)?.env?.VITE_API_URL || "http://127.0.0.1:8000";
 const API = String(RAW_API).replace(/\/+$/, "");
-
-// Your DRF path is /api/accountInfo/  (per screenshot)
 const PROFILE_PATH = "/api/accountInfo/";
 
+// Keys your app might use for the access token
+const ACCESS_KEYS = ["accessToken", "access", "token", "jwt"];
+const NAME_CACHE_KEY = "displayNameCache";
+const AUTH_BROADCAST_KEY = "auth:broadcast"; // optional cross-tab notifier
+
+// How often to poll localStorage for token changes (same-tab)
+const TOKEN_HEARTBEAT_MS = 800;
+
+// ---------- Helpers ----------
+function readAccessToken(): string {
+  for (const k of ACCESS_KEYS) {
+    const v = localStorage.getItem(k);
+    if (v) return v;
+  }
+  return "";
+}
+function clearAuthArtifacts() {
+  sessionStorage.removeItem(NAME_CACHE_KEY);
+}
+function naviSafeEmailToName(email?: string | null) {
+  if (!email) return "";
+  const i = email.indexOf("@");
+  return i > 0 ? email.slice(0, i) : email;
+}
+
 export default function Header() {
-  const { user, signOut } = useContext(AuthContext)!;
+  const navigate = useNavigate();
+  const { user, signOut } =
+    useContext(AuthContext) ?? ({ user: null, signOut: async () => {} } as any);
+
+  const [token, setToken] = useState<string>(readAccessToken());
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [isAuthed, setIsAuthed] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
+  // ---- Watch token changes (same tab) with a heartbeat + visibility wakeup
   useEffect(() => {
-    let cancelled = false;
+    let alive = true;
 
-    (async () => {
-      try {
-        const access =
-          localStorage.getItem("accessToken") || localStorage.getItem("access") || "";
-        const headers = access ? { Authorization: `Bearer ${access}` } : undefined;
+    const checkNow = () => {
+      if (!alive) return;
+      const t = readAccessToken();
+      setToken((prev) => (prev !== t ? t : prev));
+    };
 
-        const { data } = await axios.get(`${API}${PROFILE_PATH}`, {
-          headers,
-          withCredentials: false, // set true only if you use cookie auth
-        });
+    const iv = window.setInterval(checkNow, TOKEN_HEARTBEAT_MS);
+    const onVis = () => document.visibilityState === "visible" && checkNow();
+    document.addEventListener("visibilitychange", onVis);
 
-        if (!cancelled) setProfile(data as Profile);
-      } catch {
-        if (!cancelled) setProfile(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    // Also re-check immediately on mount
+    checkNow();
 
     return () => {
-      cancelled = true;
+      alive = false;
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
-  // Prefer username from API; then context; then email prefix; finally "there"
-  const displayName =
-    profile?.username ||
-    user?.username ||
-    profile?.name ||
-    (profile?.email ? profile.email.split("@")[0] : "") ||
-    (user?.email ? user.email.split("@")[0] : "") ||
-    "there";
+  // ---- Also react to cross-tab storage changes (if your login code updates storage)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea !== localStorage) return;
+      if (ACCESS_KEYS.includes(e.key || "") || e.key === AUTH_BROADCAST_KEY) {
+        const t = readAccessToken();
+        setToken((prev) => (prev !== t ? t : prev));
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // ---- Race-proof profile fetch. Only the latest request can win.
+  const reqCounter = useRef(0);
+  useEffect(() => {
+    let cancelled = false;
+    const myReqId = ++reqCounter.current;
+
+    const run = async () => {
+      // If no token, consider logged out immediately
+      if (!token) {
+        if (cancelled) return;
+        setIsAuthed(false);
+        setProfile(null);
+        clearAuthArtifacts();
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const { data } = await axios.get(`${API}${PROFILE_PATH}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        // Only the most recent request can update state
+        if (cancelled || myReqId !== reqCounter.current) return;
+
+        setProfile(data as Profile);
+        setIsAuthed(true);
+      } catch (err) {
+        if (cancelled || myReqId !== reqCounter.current) return;
+        const ax = err as AxiosError;
+
+        // Any auth error => hard logout state
+        if (ax.response?.status === 401 || ax.response?.status === 403) {
+          setIsAuthed(false);
+          setProfile(null);
+          clearAuthArtifacts();
+        } else {
+          // Network or other error -> do not claim logged in
+          setIsAuthed(false);
+          setProfile(null);
+          clearAuthArtifacts();
+        }
+      } finally {
+        if (!cancelled && myReqId === reqCounter.current) {
+          setLoading(false);
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user?.username, user?.email]);
+
+  // ---- Friendly display name (only while authenticated)
+  const displayName = useMemo(() => {
+    if (!isAuthed) return "";
+    const fromProfile =
+      profile?.username ||
+      profile?.name ||
+      naviSafeEmailToName(profile?.email || "");
+    const fromCtx =
+      (user as any)?.username ||
+      naviSafeEmailToName((user as any)?.email || "");
+
+    const name =
+      fromProfile || fromCtx || sessionStorage.getItem(NAME_CACHE_KEY) || "";
+    if (name) sessionStorage.setItem(NAME_CACHE_KEY, name);
+    return name;
+  }, [isAuthed, profile?.username, profile?.name, profile?.email, user]);
+
+  // ---- Sign out
+  const handleSignOut = async () => {
+    try {
+      clearAuthArtifacts();
+      await signOut?.();
+    } finally {
+      // Fallback: if your signOut doesn't clear tokens, do it here
+      for (const k of ACCESS_KEYS) localStorage.removeItem(k);
+      // Notify any listeners
+      localStorage.setItem(AUTH_BROADCAST_KEY, String(Date.now()));
+      // Force immediate UI update in this tab
+      setToken(readAccessToken());
+      setIsAuthed(false);
+      setProfile(null);
+      navigate("/login");
+    }
+  };
 
   return (
-    <header className="px-6 py-4 bg-gray-800 text-white flex justify-between items-center shadow-md">
-      <Link to="/" className="text-2xl font-bold hover:text-gray-300">
-        Stock Comp System
-      </Link>
-
-      {(user || profile) && !loading ? (
-        <div className="flex items-center space-x-4">
-          <span className="text-lg">Welcome {displayName}!</span>
-          <button
-            onClick={signOut}
-            className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded transition"
-          >
-            Sign Out
-          </button>
-        </div>
-      ) : (
-        <Link to="/login" className="text-indigo-400 hover:text-indigo-300 font-medium">
-          Sign In
+    <header className="sticky top-0 z-40 w-full bg-gray-900 text-white shadow">
+      <div className="flex h-20 items-center justify-between px-0">
+        <Link
+          to="/"
+          className="pl-4 md:pl-6 font-bold tracking-tight leading-tight hover:text-gray-200"
+          style={{ fontSize: "clamp(22px, 2.2vw + 8px, 34px)" }}
+          aria-label="Stock Comp System Home"
+        >
+          Endless Moments Stock Comp
         </Link>
-      )}
+
+        {!loading && isAuthed ? (
+          <div className="flex items-center gap-3 pr-3 md:pr-4">
+            {displayName ? (
+              <span className="hidden sm:inline text-base text-gray-200">
+                Welcome <span className="font-semibold">{displayName}</span>!
+              </span>
+            ) : null}
+            <button
+              onClick={handleSignOut}
+              className="rounded-lg bg-red-500 px-4 py-2.5 text-base font-semibold shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
+              aria-label="Sign Out"
+            >
+              Sign Out
+            </button>
+          </div>
+        ) : (
+          <Link
+            to="/login"
+            className="pr-3 md:pr-4 rounded-lg px-4 py-2.5 text-base font-semibold text-indigo-300 hover:text-white hover:bg-indigo-600/20"
+          >
+            Sign In
+          </Link>
+        )}
+      </div>
     </header>
   );
 }

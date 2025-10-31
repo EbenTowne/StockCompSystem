@@ -47,7 +47,7 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={<Navigate to="company-metrics" replace />} />
         <Route path="invite" element={<InviteEmployee />} />
         <Route path="create-grant" element={<CreateGrant />} />
 
