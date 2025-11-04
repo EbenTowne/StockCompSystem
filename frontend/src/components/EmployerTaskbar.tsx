@@ -14,17 +14,11 @@ export default function EmployerTaskbar() {
   return (
     <div className="h-full w-full border-r border-gray-800 bg-gray-900">
       <nav className="space-y-1 p-2.5">
-        <NavLink
-          to="company-metrics"
-          className={({ isActive }) => (isActive ? active : base)}
-        >
+        <NavLink to="company-metrics" className={({ isActive }) => (isActive ? active : base)}>
           Company Metrics
         </NavLink>
-        <NavLink
-          to="create-grant"
-          className={({ isActive }) => (isActive ? active : base)}
-        >
-          Create Stock Option
+        <NavLink to="create-grant" className={({ isActive }) => (isActive ? active : base)}>
+          Create New Option
         </NavLink>
         <NavLink to="grants" className={({ isActive }) => (isActive ? active : base)}>
           Manage Stock Options
@@ -35,14 +29,8 @@ export default function EmployerTaskbar() {
         <NavLink to="expenses" className={({ isActive }) => (isActive ? active : base)}>
           Expenses
         </NavLink>
-        <NavLink to="invite" className={({ isActive }) => (isActive ? active : base)}>
-          Invite Employee
-        </NavLink>
-        <NavLink
-          to="view-employees"
-          className={({ isActive }) => (isActive ? active : base)}
-        >
-          View Employees
+        <NavLink to="view-employees" className={({ isActive }) => (isActive ? active : base)}>
+          Manage Employees
         </NavLink>
       </nav>
     </div>

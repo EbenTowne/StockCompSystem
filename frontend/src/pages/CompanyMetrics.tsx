@@ -1,15 +1,40 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  startTransition,
+} from "react";
 import axios from "axios";
 
 const API = import.meta.env.VITE_API_URL as string; // e.g. "http://localhost:8000/api"
 
-/** -------------------- API paths (relative to API) -------------------- */
+// ---------- API paths ----------
 const COMPANY_BASE = "/company/";
-const COMPANY_FINANCIALS = "/company/financials/";
+const COMPANY_FINANCIALS = "/company/financials/"; // list + POST; DELETE /company/financials/<year>/
 const CLASSES_BASE = "/equity/classes/";
 const SERIES_BASE = "/equity/series/";
 
-/** -------------------- Types -------------------- */
+// ---------- Tiny session cache (60s TTL) ----------
+const CACHE_TTL_MS = 60_000;
+function ssGet<T>(k: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(k);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (Date.now() - obj.t > CACHE_TTL_MS) return null;
+    return obj.v as T;
+  } catch {
+    return null;
+  }
+}
+function ssSet<T>(k: string, v: T) {
+  try {
+    sessionStorage.setItem(k, JSON.stringify({ t: Date.now(), v }));
+  } catch {}
+}
+
+// ---------- Types ----------
 type FinancialRow = {
   year: number | "";
   revenue: string | number | null;
@@ -29,8 +54,11 @@ type CompanyForm = {
 type EquityClass = {
   id: number | string;
   name: string;
-  share_type?: "COMMON" | "PREFERRED" | null; // read-only (inferred from series)
+  share_type?: "COMMON" | "PREFERRED" | null;
   total_class_shares?: number | string | null;
+  // read-only from API if present
+  shares_allocated?: number | string | null;
+  shares_remaining?: number | string | null;
   is_archived?: boolean;
   series?: { id: number; name: string; share_type: "COMMON" | "PREFERRED" | null };
 };
@@ -43,7 +71,7 @@ type EquitySeries = {
   is_archived?: boolean;
 };
 
-/** -------------------- Formatting Helpers -------------------- */
+// ---------- Helpers ----------
 function sanitizeNumberInput(v: string) {
   const cleaned = v.replace(/[^\d.]/g, "");
   const parts = cleaned.split(".");
@@ -96,39 +124,54 @@ function extractErrorMessage(err: any): string {
   return "An unknown error occurred.";
 }
 
-/** -------------------- Donut (Pie) Chart -------------------- */
+// ---------- Donut Chart ----------
 type Slice = { label: string; value: number; color: string };
 
-function DonutChart({
+const DonutChart = React.memo(function DonutChart({
   data,
-  size = 160,
-  thickness = 22,
+  size = 240,
+  thickness = 24,
+  gap = 2, // px gap along the ring between segments
   centerLabel,
 }: {
   data: Slice[];
   size?: number;
   thickness?: number;
+  gap?: number;
   centerLabel?: React.ReactNode;
 }) {
-  const total = Math.max(1, data.reduce((s, d) => s + (isFinite(d.value) ? d.value : 0), 0));
+  const total = Math.max(
+    1,
+    data.reduce((s, d) => s + (isFinite(d.value) ? d.value : 0), 0)
+  );
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
+  const gapLen = Math.min(gap, Math.max(0, circumference * 0.02)); // cap gap
 
   let cumulative = 0;
   const segments = data.map((d) => {
     const fraction = Math.max(0, d.value) / total;
-    const length = circumference * fraction;
+    const rawLen = circumference * fraction;
+    const length = Math.max(0, rawLen - gapLen); // subtract a small gap
     const dasharray = `${length} ${circumference - length}`;
     const dashoffset = circumference * 0.25 - cumulative; // start at 12 o'clock
-    cumulative += length;
+    cumulative += length + gapLen; // advance including the gap
     return { ...d, dasharray, dashoffset };
   });
 
   return (
     <div className="relative inline-block" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="Share allocation donut chart">
         <g transform={`translate(${size / 2}, ${size / 2})`}>
-          <circle r={radius} cx={0} cy={0} fill="transparent" stroke="#eef2f7" strokeWidth={thickness} />
+          <circle
+            r={radius}
+            cx={0}
+            cy={0}
+            fill="transparent"
+            stroke="#eef2f7"
+            strokeWidth={thickness}
+            aria-hidden="true"
+          />
           {segments.map((s, i) => (
             <circle
               key={i}
@@ -141,21 +184,28 @@ function DonutChart({
               strokeDasharray={s.dasharray}
               strokeDashoffset={s.dashoffset}
               strokeLinecap="round"
-            />
+            >
+              <title>{`${s.label}: ${s.value.toLocaleString()}`}</title>
+            </circle>
           ))}
         </g>
       </svg>
       {centerLabel && (
-        <div className="absolute inset-0 grid place-items-center">
-          <div className="text-center text-sm">{centerLabel}</div>
+        <div className="absolute inset-0 grid place-items-center pointer-events-none select-none">
+          <div className="text-center leading-tight text-sm">{centerLabel}</div>
         </div>
       )}
     </div>
   );
-}
-const PIE_COLORS = ["#111827", "#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#059669", "#ea580c", "#9333ea"];
+});
 
-/** -------------------- Component -------------------- */
+const PIE_COLORS = [
+  "#111827", "#2563eb", "#16a34a", "#f59e0b", "#dc2626",
+  "#7c3aed", "#059669", "#ea580c", "#9333ea", "#0ea5e9",
+  "#84cc16", "#e11d48"
+];
+
+// ---------- Component ----------
 export default function CompanyMetrics() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -173,12 +223,12 @@ export default function CompanyMetrics() {
   const [classes, setClasses] = useState<EquityClass[]>([]);
   const [series, setSeries] = useState<EquitySeries[]>([]);
 
-  // Collapsible toggles (start CLOSED by default)
+  // dropdowns CLOSED by default
   const [openSeries, setOpenSeries] = useState(false);
-  const [openClasses, setOpenClasses] = useState(false);
+  const [openClasses, setOpenClasses] = useState(true); // open so screenshots match
   const [openFinancials, setOpenFinancials] = useState(false);
 
-  // Modals
+  // modals
   const [showClassModal, setShowClassModal] = useState(false);
   const [newClass, setNewClass] = useState<{ name: string; total_class_shares: string; series_id: string }>({
     name: "",
@@ -191,22 +241,78 @@ export default function CompanyMetrics() {
     share_type: null,
   });
 
-  /** Auth header + initial load */
+  // abort control for in-flight loads
+  const abortRef = useRef<AbortController | null>(null);
+
+  // ---------- Load ----------
   useEffect(() => {
     const access = localStorage.getItem("accessToken");
     if (access) axios.defaults.headers.common["Authorization"] = `Bearer ${access}`;
     loadAll();
+    return () => abortRef.current?.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadAll() {
     setLoading(true);
     setNote(null);
+
+    // 1) warm up with cache (non-blocking)
+    const cacheKey = "metrics-init";
+    const cached = ssGet<{
+      company: any;
+      classes: EquityClass[];
+      series: EquitySeries[];
+      financials?: any;
+    }>(cacheKey);
+
+    if (cached) {
+      const company = cached.company || {};
+      startTransition(() => {
+        setForm({
+          name: company?.name,
+          total_authorized_shares:
+            company?.total_authorized_shares != null ? String(company.total_authorized_shares) : "0",
+          current_fmv:
+            company?.current_fmv != null && company.current_fmv !== ""
+              ? formatWithCommas(sanitizeNumberInput(String(company.current_fmv)))
+              : "0",
+          current_market_value:
+            company?.current_market_value != null && company.current_market_value !== ""
+              ? formatWithCommas(sanitizeNumberInput(String(company.current_market_value)))
+              : "0",
+          volatility:
+            company?.volatility != null && company.volatility !== ""
+              ? String(Math.round(Number(company.volatility) * 100))
+              : "0",
+          risk_free_rate:
+            company?.risk_free_rate != null && company.risk_free_rate !== ""
+              ? String(Math.round(Number(company.risk_free_rate) * 100))
+              : "0",
+          financials: Array.isArray(company?.financials)
+            ? company.financials.map((r: any) => ({
+                year: r.year ?? "",
+                revenue: r.revenue ?? null,
+                net_income: r.net_income ?? null,
+              }))
+            : [],
+        });
+        setClasses(cached.classes || []);
+        setSeries(cached.series || []);
+      });
+    }
+
+    // 2) fetch fresh with abort support
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     try {
       const [companyRes, classRes, seriesRes, finRes] = await Promise.all([
-        axios.get(`${API}${COMPANY_BASE}`),
-        axios.get(`${API}${CLASSES_BASE}`),
-        axios.get(`${API}${SERIES_BASE}`),
-        axios.get(`${API}${COMPANY_FINANCIALS}`).catch(() => ({ data: null } as any)),
+        axios.get(`${API}${COMPANY_BASE}`, { signal: ctrl.signal }),
+        axios.get(`${API}${CLASSES_BASE}`, { signal: ctrl.signal }),
+        axios.get(`${API}${SERIES_BASE}`, { signal: ctrl.signal }),
+        axios.get(`${API}${COMPANY_FINANCIALS}`, { signal: ctrl.signal }).catch(() => ({ data: null } as any)),
       ]);
 
       const company = companyRes.data || {};
@@ -231,7 +337,11 @@ export default function CompanyMetrics() {
             ? String(Math.round(Number(company.risk_free_rate) * 100))
             : "0",
         financials: Array.isArray(company?.financials)
-          ? company.financials.map((r: any) => ({ year: r.year ?? "", revenue: r.revenue ?? null, net_income: r.net_income ?? null }))
+          ? company.financials.map((r: any) => ({
+              year: r.year ?? "",
+              revenue: r.revenue ?? null,
+              net_income: r.net_income ?? null,
+            }))
           : [],
       };
 
@@ -244,48 +354,83 @@ export default function CompanyMetrics() {
         next.financials = [...next.financials, ...extra];
       }
 
-      setForm(next);
-      setClasses(Array.isArray(classRes.data) ? classRes.data : []);
-      setSeries(Array.isArray(seriesRes.data) ? seriesRes.data : []);
+      const classList: EquityClass[] = Array.isArray(classRes.data) ? classRes.data : [];
+      const seriesList: EquitySeries[] = Array.isArray(seriesRes.data) ? seriesRes.data : [];
+
+      startTransition(() => {
+        setForm(next);
+        setClasses(classList);
+        setSeries(seriesList);
+      });
+
+      ssSet(cacheKey, {
+        company: companyRes.data,
+        classes: classList,
+        series: seriesList,
+        financials: finRes?.data,
+      });
     } catch (err: any) {
+      if (ctrl.signal.aborted) return;
       setNote({ type: "err", text: extractErrorMessage(err) });
     } finally {
-      setLoading(false);
+      if (!ctrl.signal.aborted) setLoading(false);
     }
   }
 
-  /** Allocation math for donut */
+  // ---------- Allocation ----------
   const authorizedShares = useMemo(
     () => Number(String(form.total_authorized_shares).replace(/,/g, "")) || 0,
     [form.total_authorized_shares]
   );
+
+  // Sum allocations (prefer API's shares_allocated; fallback to class totals)
   const allocatedShares = useMemo(
-    () => classes.reduce((sum, c) => sum + toShareNumber(c.total_class_shares), 0),
+    () =>
+      classes.reduce((sum, c) => {
+        const allocFromApi = toShareNumber((c as any).shares_allocated);
+        return sum + (allocFromApi > 0 ? allocFromApi : toShareNumber(c.total_class_shares));
+      }, 0),
     [classes]
   );
+
   const remainingShares = Math.max(0, authorizedShares - allocatedShares);
 
-  // Build slices incl. Unallocated
+  // Group small slices into "Other" and sort desc
   const pieData: Slice[] = useMemo(() => {
     const perClass = classes
       .filter((c) => toShareNumber(c.total_class_shares) > 0)
-      .map((c, idx) => ({
+      .map((c) => ({
         label: c.name,
         value: toShareNumber(c.total_class_shares),
-        color: PIE_COLORS[idx % PIE_COLORS.length],
       }));
+
+    // include "Unallocated" as a slice
     const unallocated = Math.max(0, authorizedShares - allocatedShares);
     if (authorizedShares > 0 && unallocated > 0) {
-      perClass.push({ label: "Unallocated", value: unallocated, color: "#9ca3af" });
+      perClass.push({ label: "Unallocated", value: unallocated });
     }
-    return perClass;
+
+    // sort by value desc
+    perClass.sort((a, b) => b.value - a.value);
+
+    // keep top N, group rest
+    const TOP_N = 6;
+    const top = perClass.slice(0, TOP_N);
+    const rest = perClass.slice(TOP_N);
+    const otherSum = rest.reduce((s, r) => s + r.value, 0);
+    if (otherSum > 0) top.push({ label: "Other", value: otherSum });
+
+    // attach colors
+    return top.map((d, i) => ({
+      ...d,
+      color: d.label === "Unallocated" ? "#9ca3af" : d.label === "Other" ? "#cbd5e1" : PIE_COLORS[i % PIE_COLORS.length],
+    }));
   }, [classes, authorizedShares, allocatedShares]);
 
-  /** Percent helper for legend */
   const totalForPct = Math.max(1, pieData.reduce((s, p) => s + p.value, 0));
   const percent = (n: number) => Math.round((n / totalForPct) * 100);
 
-  /** Form helpers */
+  // ---------- Form helpers ----------
   function updateField<K extends keyof CompanyForm>(key: K, value: CompanyForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -307,24 +452,31 @@ export default function CompanyMetrics() {
     });
   }
 
-  /** Save company */
+  function buildCompanyPayload(financials: FinancialRow[] = form.financials) {
+    return {
+      total_authorized_shares:
+        form.total_authorized_shares.trim() === "" ? 0 : Number(form.total_authorized_shares.replace(/,/g, "")),
+      current_fmv: unformatNumberString(form.current_fmv),
+      current_market_value: unformatNumberString(form.current_market_value),
+      volatility: percentDigitsToDecimalString(form.volatility),
+      risk_free_rate: percentDigitsToDecimalString(form.risk_free_rate),
+      financials: financials
+        .filter((r) => r.year !== "")
+        .map((r) => ({
+          year: Number(r.year),
+          revenue: r.revenue === "" ? null : r.revenue,
+          net_income: r.net_income === "" ? null : r.net_income,
+        })),
+    };
+  }
+
+  // ---------- Save company ----------
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setNote(null);
     try {
-      const payload = {
-        total_authorized_shares:
-          form.total_authorized_shares.trim() === "" ? 0 : Number(form.total_authorized_shares.replace(/,/g, "")),
-        current_fmv: unformatNumberString(form.current_fmv),
-        current_market_value: unformatNumberString(form.current_market_value),
-        volatility: percentDigitsToDecimalString(form.volatility),
-        risk_free_rate: percentDigitsToDecimalString(form.risk_free_rate),
-        financials: form.financials
-          .filter((r) => r.year !== "")
-          .map((r) => ({ year: Number(r.year), revenue: r.revenue === "" ? null : r.revenue, net_income: r.net_income === "" ? null : r.net_income })),
-      };
-
+      const payload = buildCompanyPayload();
       const res = await axios.put(`${API}${COMPANY_BASE}`, payload);
       const updated = res.data;
 
@@ -337,7 +489,11 @@ export default function CompanyMetrics() {
         volatility: String(Math.round(Number(payload.volatility || "0") * 100)),
         risk_free_rate: String(Math.round(Number(payload.risk_free_rate || "0") * 100)),
         financials: Array.isArray(updated?.financials)
-          ? updated.financials.map((r: any) => ({ year: r.year ?? "", revenue: r.revenue ?? null, net_income: r.net_income ?? null }))
+          ? updated.financials.map((r: any) => ({
+              year: r.year ?? "",
+              revenue: r.revenue ?? null,
+              net_income: r.net_income ?? null,
+            }))
           : f.financials,
       }));
     } catch (err: any) {
@@ -347,7 +503,43 @@ export default function CompanyMetrics() {
     }
   }
 
-  /** Create/Delete entities (needed by modals) */
+  // ---------- Per-row actions ----------
+  async function saveFinancialRow(index: number) {
+    const row = form.financials[index];
+    if (!row?.year) {
+      setNote({ type: "err", text: "Please enter a year before saving this row." });
+      return;
+    }
+    try {
+      await axios.post(`${API}${COMPANY_FINANCIALS}`, {
+        year: Number(row.year),
+        revenue: row.revenue === "" ? null : row.revenue,
+        net_income: row.net_income === "" ? null : row.net_income,
+      });
+      setNote({ type: "ok", text: `Saved financials for ${row.year}.` });
+    } catch (err: any) {
+      setNote({ type: "err", text: extractErrorMessage(err) });
+    }
+  }
+
+  async function removeFinancialRow(index: number) {
+    const row = form.financials[index];
+    if (!row?.year) {
+      removeRow(index);
+      return;
+    }
+    const ok = confirm(`Delete company financials for ${row.year}?`);
+    if (!ok) return;
+    try {
+      await axios.delete(`${API}${COMPANY_FINANCIALS}${row.year}/`);
+      removeRow(index);
+      setNote({ type: "ok", text: `Removed financials for ${row.year}.` });
+    } catch (err: any) {
+      setNote({ type: "err", text: extractErrorMessage(err) });
+    }
+  }
+
+  // ---------- Series/Class CRUD ----------
   async function createClass() {
     if (!newClass.name.trim()) return;
     if (!newClass.total_class_shares.trim()) {
@@ -365,10 +557,12 @@ export default function CompanyMetrics() {
         series_id: Number(newClass.series_id),
       };
       const res = await axios.post(`${API}${CLASSES_BASE}`, payload);
-      setClasses((prev) => [res.data, ...prev]);
+      const newList = [res.data, ...classes];
+      setClasses(newList);
       setNewClass({ name: "", total_class_shares: "", series_id: "" });
       setShowClassModal(false);
       setNote({ type: "ok", text: "Class added." });
+      setOpenClasses(true);
     } catch (err: any) {
       setNote({ type: "err", text: extractErrorMessage(err) });
     }
@@ -385,10 +579,12 @@ export default function CompanyMetrics() {
         name: newSeries.name.trim(),
         share_type: newSeries.share_type,
       });
-      setSeries((prev) => [res.data, ...prev]);
+      const newList = [res.data, ...series];
+      setSeries(newList);
       setNewSeries({ name: "", share_type: null });
       setShowSeriesModal(false);
       setNote({ type: "ok", text: "Series added." });
+      setOpenSeries(true);
     } catch (err: any) {
       setNote({ type: "err", text: extractErrorMessage(err) });
     }
@@ -427,11 +623,12 @@ export default function CompanyMetrics() {
     return t === "COMMON" ? "Common" : "Preferred";
   }
 
+  // ---------- Render ----------
   if (loading)
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden p-8 text-center text-gray-700">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
+        <div className="w-full">
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden p-6 text-center text-gray-700">
             Loading company data…
           </div>
         </div>
@@ -439,38 +636,45 @@ export default function CompanyMetrics() {
     );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          {/* Trimmed padding since header is removed */}
-          <div className="px-8 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
+      <div className="w-full">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
+          <div className="px-8 py-6">
+            {/* Page header */}
+            <div className="mb-8 text-center">
+              <h1 className="text-3xl font-bold text-gray-900">{form.name ?? "Company"}</h1>
+              <p className="text-sm text-gray-600">Manage valuation inputs, share allocations, and historical financials</p>
+            </div>
+
             {note && (
               <div
+                role="alert"
                 className={`rounded-lg border p-3 text-sm mb-6 ${
-                  note.type === "ok" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"
+                  note.type === "ok"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-red-200 bg-red-50 text-red-700"
                 }`}
               >
                 {note.text}
               </div>
             )}
 
-            {/* ===== Top row: Metrics (left) + Share Allocation (right) ===== */}
-            <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* ===== Top row: Metrics + Share Allocation ===== */}
+            <section className="grid grid-cols-1 2XL:grid-cols-[1.1fr_0.9fr] xl:grid-cols-2 gap-6 mb-10 items-stretch">
               {/* Company Metrics */}
-              <div className="pt-2">
-                <div className="bg-gray-50 rounded-lg border border-gray-200 p-6">
+              <div>
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 h-full">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-gray-900">Company Metrics</h2>
                   </div>
 
-                  <form onSubmit={onSave} className="space-y-6">
-                    {/* Row 1 */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Current Market Value */}
+                  <form onSubmit={onSave} className="space-y-6" aria-label="Company metrics form">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm mb-1 text-gray-700">Current Market Value</label>
                         <div className="relative">
                           <input
+                            aria-label="Current Market Value"
                             className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             value={formatWithCommas(sanitizeNumberInput(form.current_market_value))}
                             onChange={(e) => updateField("current_market_value", sanitizeNumberInput(e.target.value))}
@@ -478,11 +682,12 @@ export default function CompanyMetrics() {
                             placeholder="0"
                             inputMode="decimal"
                           />
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+                            $
+                          </span>
                         </div>
                       </div>
 
-                      {/* Total Authorized Shares */}
                       <div>
                         <div className="flex items-center justify-between">
                           <label className="block text-sm mb-1 text-gray-700">Total Authorized Shares</label>
@@ -491,6 +696,7 @@ export default function CompanyMetrics() {
                           </span>
                         </div>
                         <input
+                          aria-label="Total Authorized Shares"
                           className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                           value={formatSharesDisplay(form.total_authorized_shares)}
                           onChange={(e) => updateField("total_authorized_shares", e.target.value.replace(/\D/g, ""))}
@@ -501,13 +707,12 @@ export default function CompanyMetrics() {
                       </div>
                     </div>
 
-                    {/* Row 2 */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {/* FMV */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-sm mb-1 text-gray-700">FMV</label>
                         <div className="relative">
                           <input
+                            aria-label="Fair Market Value"
                             className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             value={formatWithCommas(sanitizeNumberInput(form.current_fmv))}
                             onChange={(e) => updateField("current_fmv", sanitizeNumberInput(e.target.value))}
@@ -515,15 +720,17 @@ export default function CompanyMetrics() {
                             placeholder="0"
                             inputMode="decimal"
                           />
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+                            $
+                          </span>
                         </div>
                       </div>
 
-                      {/* Volatility */}
                       <div>
                         <label className="block text-sm mb-1 text-gray-700">Volatility</label>
                         <div className="relative">
                           <input
+                            aria-label="Volatility percent"
                             className="w-full border rounded-lg pr-10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             value={form.volatility.replace(/\D/g, "") || "0"}
                             onChange={(e) => updateField("volatility", e.target.value.replace(/\D/g, ""))}
@@ -531,15 +738,17 @@ export default function CompanyMetrics() {
                             placeholder="0"
                             inputMode="numeric"
                           />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">%</span>
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+                            %
+                          </span>
                         </div>
                       </div>
 
-                      {/* Risk Free Rate */}
                       <div>
                         <label className="block text-sm mb-1 text-gray-700">Risk Free Rate</label>
                         <div className="relative">
                           <input
+                            aria-label="Risk-free rate percent"
                             className="w-full border rounded-lg pr-10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             value={form.risk_free_rate.replace(/\D/g, "") || "0"}
                             onChange={(e) => updateField("risk_free_rate", e.target.value.replace(/\D/g, ""))}
@@ -547,12 +756,14 @@ export default function CompanyMetrics() {
                             placeholder="0"
                             inputMode="numeric"
                           />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">%</span>
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+                            %
+                          </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="pt-1">
+                    <div className="pt-1 flex gap-3">
                       <button
                         type="submit"
                         disabled={saving}
@@ -566,14 +777,31 @@ export default function CompanyMetrics() {
               </div>
 
               {/* Share Allocation */}
-              <div className="bg-gray-50 rounded-lg border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-2">
+              <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-medium text-gray-900">Share Allocation</h3>
-                  {authorizedShares > 0 && (
-                    <span className="text-xs text-gray-600">
-                      Allocated: <b>{allocatedShares.toLocaleString()}</b>
-                    </span>
-                  )}
+                </div>
+
+                {/* KPIs for quick glance */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="rounded-lg border bg-white p-3 text-center">
+                    <div className="text-[11px] text-gray-500">Authorized</div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      {authorizedShares.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border bg-white p-3 text-center">
+                    <div className="text-[11px] text-gray-500">Allocated</div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      {allocatedShares.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border bg-white p-3 text-center">
+                    <div className="text-[11px] text-gray-500">Remaining</div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      {remainingShares.toLocaleString()}
+                    </div>
+                  </div>
                 </div>
 
                 {authorizedShares <= 0 ? (
@@ -581,31 +809,35 @@ export default function CompanyMetrics() {
                     Set <b>Total Authorized Shares</b> to see allocation.
                   </p>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-10 sm:flex-row sm:justify-center mt-6 mb-2">
-                    {/* Chart */}
-                    <div className="flex justify-center">
+                  <div className="grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] gap-6 items-center">
+                    {/* Fixed chart column */}
+                    <div className="flex justify-center md:justify-start">
                       <DonutChart
                         data={pieData}
-                        size={200}
-                        thickness={22}
+                        size={240}
+                        thickness={24}
+                        gap={2}
                         centerLabel={
                           <div className="leading-tight">
-                            <div className="text-[10px] text-gray-500">Authorized</div>
-                            <div className="font-semibold text-sm">{authorizedShares.toLocaleString()}</div>
+                            <div className="text-[10px] text-gray-500">Remaining</div>
+                            <div className="font-semibold text-sm">
+                              {remainingShares.toLocaleString()}
+                            </div>
                           </div>
                         }
                       />
                     </div>
 
-                    {/* Legend */}
-                    <div className="min-w-[260px]">
-                      <ul className="space-y-1.5">
+                    {/* Flexible legend column — SINGLE COLUMN */}
+                    <div className="min-w-0">
+                      <ul className="grid grid-cols-1 gap-y-2 max-h-56 overflow-auto pr-1" aria-label="Share allocation legend">
                         {pieData.map((s, i) => (
-                          <li key={i} className="flex items-center justify-between gap-3 text-sm">
+                          <li key={i} className="flex items-center justify-between gap-3 text-sm min-w-0">
                             <span className="flex items-center gap-2 min-w-0">
                               <span
-                                className="inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/10"
+                                className="inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/10 shrink-0"
                                 style={{ background: s.color }}
+                                aria-hidden="true"
                               />
                               <span className="truncate" title={s.label}>
                                 {s.label}
@@ -613,7 +845,7 @@ export default function CompanyMetrics() {
                             </span>
                             <span className="shrink-0 tabular-nums text-right">
                               {s.value.toLocaleString()}{" "}
-                              <span className="ml-1 inline-block rounded-full border px-1.5 py-0.5 text-[11px] text-gray-700">
+                              <span className="ml-1 inline-block rounded border px-1.5 py-0.5 text-[10px] text-gray-700 align-middle">
                                 {percent(s.value)}%
                               </span>
                             </span>
@@ -626,13 +858,110 @@ export default function CompanyMetrics() {
               </div>
             </section>
 
-            {/* ===== Series / Rounds (Collapsible - closed by default) ===== */}
-            <section className="mt-6 bg-white rounded-lg">
+            {/* ===== Classes ===== */}
+            <section className="mt-4 mb-10">
+              <div className="border rounded-lg bg-white">
+                <button
+                  type="button"
+                  onClick={() => setOpenClasses((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3"
+                  aria-expanded={openClasses}
+                >
+                  <span className="text-lg font-medium">Classes</span>
+                  <span className="text-gray-600">{openClasses ? "▾" : "▸"}</span>
+                </button>
+
+                <div
+                  className={`overflow-hidden transition-[max-height] duration-300 ${
+                    openClasses ? "max-h-[2000px]" : "max-h-0"
+                  }`}
+                >
+                  <div className="px-4 pb-4">
+                    <div className="flex items-center justify-end mb-2">
+                      <button
+                        type="button"
+                        className="border rounded-lg px-3 py-1 hover:bg-gray-50"
+                        onClick={() => setShowClassModal(true)}
+                      >
+                        + Add Class
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {classes.length === 0 && (
+                        <div className="text-gray-500 text-sm border rounded-lg p-3">
+                          No classes configured. Click “Add Class”.
+                        </div>
+                      )}
+
+                      {classes.map((c) => {
+                        const total = toShareNumber(c.total_class_shares);
+                        const alloc = toShareNumber((c as any).shares_allocated);
+                        const remaining = toShareNumber((c as any).shares_remaining);
+                        const computedRemaining = Math.max(0, total - alloc);
+                        const remFinal = remaining > 0 || computedRemaining === 0 ? remaining || 0 : computedRemaining;
+
+                        return (
+                          <div key={String(c.id)} className="grid grid-cols-12 gap-2 items-start border rounded-lg p-3">
+                            <div className="col-span-12 sm:col-span-4">
+                              <div className="text-xs text-gray-600 mb-1">Name</div>
+                              <div className="font-medium">{c.name}</div>
+                              {c.series?.name && (
+                                <div className="mt-1 text-xs text-gray-600">
+                                  Linked Series: {c.series.name} (
+                                  {displaySeriesType(c.series?.share_type)})
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="col-span-6 sm:col-span-2">
+                              <div className="text-xs text-gray-600 mb-1">Type</div>
+                              <div>{(c.share_type ?? c.series?.share_type) === "COMMON" ? "Common" : "Preferred"}</div>
+                            </div>
+
+                            <div className="col-span-6 sm:col-span-2">
+                              <div className="text-xs text-gray-600 mb-1">Total Class Shares</div>
+                              <div className="tabular-nums">{total.toLocaleString()}</div>
+                            </div>
+
+                            <div className="col-span-6 sm:col-span-2">
+                              <div className="text-xs text-gray-600 mb-1">Allocated</div>
+                              <div className="tabular-nums">{alloc.toLocaleString()}</div>
+                            </div>
+
+                            <div className="col-span-6 sm:col-span-2">
+                              <div className="text-xs text-gray-600 mb-1">Remaining (Unallocated)</div>
+                              <div className="tabular-nums">{Math.max(0, remFinal).toLocaleString()}</div>
+                            </div>
+
+                            <div className="col-span-12 sm:col-span-12 flex sm:justify-end">
+                              <button
+                                type="button"
+                                className="w-full sm:w-auto border rounded-lg px-3 py-2 hover:bg-gray-50"
+                                onClick={() => {
+                                  if (confirm(`Delete class "${c.name}"?`)) deleteClass(c.id);
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* ===== Series / Rounds ===== */}
+            <section className="mt-4">
               <div className="border rounded-lg bg-white">
                 <button
                   type="button"
                   onClick={() => setOpenSeries((v) => !v)}
                   className="w-full flex items-center justify-between px-4 py-3"
+                  aria-expanded={openSeries}
                 >
                   <span className="text-lg font-medium">Series / Rounds</span>
                   <span className="text-gray-600">{openSeries ? "▾" : "▸"}</span>
@@ -696,86 +1025,14 @@ export default function CompanyMetrics() {
               </div>
             </section>
 
-            {/* ===== Classes (Collapsible - closed by default) ===== */}
-            <section className="mt-6">
-              <div className="border rounded-lg bg-white">
-                <button
-                  type="button"
-                  onClick={() => setOpenClasses((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3"
-                >
-                  <span className="text-lg font-medium">Classes</span>
-                  <span className="text-gray-600">{openClasses ? "▾" : "▸"}</span>
-                </button>
-
-                <div
-                  className={`overflow-hidden transition-[max-height] duration-300 ${
-                    openClasses ? "max-h-[2000px]" : "max-h-0"
-                  }`}
-                >
-                  <div className="px-4 pb-4">
-                    <div className="flex items-center justify-end mb-2">
-                      <button
-                        type="button"
-                        className="border rounded-lg px-3 py-1 hover:bg-gray-50"
-                        onClick={() => setShowClassModal(true)}
-                      >
-                        + Add Class
-                      </button>
-                    </div>
-
-                    <div className="space-y-3">
-                      {classes.length === 0 && (
-                        <div className="text-gray-500 text-sm border rounded-lg p-3">
-                          No classes configured. Click “Add Class”.
-                        </div>
-                      )}
-
-                      {classes.map((c) => (
-                        <div key={String(c.id)} className="grid grid-cols-12 gap-2 items-end border rounded-lg p-3">
-                          <div className="col-span-12 sm:col-span-5">
-                            <div className="text-xs text-gray-600 mb-1">Name</div>
-                            <div className="font-medium">{c.name}</div>
-                          </div>
-                          <div className="col-span-6 sm:col-span-3">
-                            <div className="text-xs text-gray-600 mb-1">Type</div>
-                            <div>{(c.share_type ?? c.series?.share_type) === "COMMON" ? "Common" : "Preferred"}</div>
-                          </div>
-                          <div className="col-span-6 sm:col-span-2">
-                            <div className="text-xs text-gray-600 mb-1">Total Class Shares</div>
-                            <div>{c.total_class_shares ?? "—"}</div>
-                          </div>
-                          <div className="col-span-12 sm:col-span-2 flex sm:justify-end">
-                            <button
-                              type="button"
-                              className="w-full sm:w-auto border rounded-lg px-3 py-2 hover:bg-gray-50"
-                              onClick={() => {
-                                if (confirm(`Delete class "${c.name}"?`)) deleteClass(c.id);
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                          {c.series?.name && (
-                            <div className="col-span-12 text-xs text-gray-600">
-                              Linked Series: {c.series.name} ({displaySeriesType(c.series.share_type)})
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Company Financials Section */}
-            <section className="mt-6">
+            {/* ===== Company Financials ===== */}
+            <section className="mt-10">
               <div className="border rounded-lg bg-white">
                 <button
                   type="button"
                   onClick={() => setOpenFinancials((v) => !v)}
                   className="w-full flex items-center justify-between px-4 py-3"
+                  aria-expanded={openFinancials}
                 >
                   <span className="text-lg font-medium">Company Financials</span>
                   <span className="text-gray-600">{openFinancials ? "▾" : "▸"}</span>
@@ -812,7 +1069,6 @@ export default function CompanyMetrics() {
                             />
                           </div>
 
-                          {/* Revenue with $ */}
                           <div className="col-span-12 sm:col-span-4">
                             <label className="block text-sm mb-1">Revenue (USD)</label>
                             <div className="relative">
@@ -829,7 +1085,6 @@ export default function CompanyMetrics() {
                             </div>
                           </div>
 
-                          {/* Net Income with $ */}
                           <div className="col-span-12 sm:col-span-4">
                             <label className="block text-sm mb-1">Net Income (USD)</label>
                             <div className="relative">
@@ -846,11 +1101,21 @@ export default function CompanyMetrics() {
                             </div>
                           </div>
 
-                          <div className="col-span-12 sm:col-span-2">
+                          <div className="col-span-12 sm:col-span-2 flex gap-2">
                             <button
                               type="button"
-                              className="w-full border rounded-lg px-3 py-2 hover:bg-gray-50"
-                              onClick={() => removeRow(i)}
+                              className="w-1/2 border rounded-lg px-3 py-2 hover:bg-gray-50"
+                              onClick={() => saveFinancialRow(i)}
+                              title="Save this year"
+                            >
+                              Save
+                            </button>
+
+                            <button
+                              type="button"
+                              className="w-1/2 border rounded-lg px-3 py-2 hover:bg-gray-50"
+                              onClick={() => removeFinancialRow(i)}
+                              title="Remove this year"
                             >
                               Remove
                             </button>
@@ -863,7 +1128,7 @@ export default function CompanyMetrics() {
               </div>
             </section>
 
-            {/* -------------------- Modals -------------------- */}
+            {/* ---------- Modals ---------- */}
             {showClassModal && (
               <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
                 <div className="bg-white rounded-xl p-4 w-full max-w-md shadow-lg">

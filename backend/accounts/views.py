@@ -354,6 +354,32 @@ class CompanyFinancialsView(generics.ListCreateAPIView):
         data = CompanyFinancialInputSerializer(qs, many=True).data
         return Response({"financials": data}, status=status.HTTP_201_CREATED)
 
-# ──────────────
-# AI View Code
-#───────────────
+class CompanyFinancialsDeleteView(APIView):
+    permission_classes = [IsAuthenticated, IsEmployer]
+
+    def delete(self, request, year: int):
+        company = request.user.profile.company
+        deleted, _ = CompanyFinancial.objects.filter(company=company, year=year).delete()
+        if deleted == 0:
+            return Response({"detail": "Year not found."}, status=status.HTTP_404_NOT_FOUND)
+        # return a simple 204; the client will refresh its local list
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+class EmployeeDeleteView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsEmployer]
+
+    def delete(self, request, unique_id: str):
+        # Only delete employees in the caller’s company
+        try:
+            profile = UserProfile.objects.get(
+                unique_id=unique_id,
+                company=request.user.profile.company,
+                role='employee'
+            )
+        except UserProfile.DoesNotExist:
+            return Response({"detail": "Employee not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Delete the Django auth user; cascades to profile, which cascades to grants
+        # UserProfile.user is OneToOne with on_delete=CASCADE, and EquityGrant.user FK is CASCADE
+        profile.user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

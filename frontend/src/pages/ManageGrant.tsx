@@ -76,109 +76,118 @@ export default function ManageGrants() {
   const hasQuery = useMemo(() => Boolean((uniqueId || urlId).trim()), [uniqueId, urlId]);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header + inline search */}
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold">Manage Grants</h1>
-        <p className="text-xs text-gray-500 mt-1">
-          Look up an employee by <b>unique_id</b> to view or modify their grants.
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
+      <div className="w-full">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
+          <div className="px-8 py-6">
+            {/* Page header */}
+            <div className="mb-8 text-center">
+              <h1 className="text-2xl font-bold text-gray-900">Manage Grants</h1>
+              <p className="text-sm text-gray-600">
+                Look up an employee by <b>unique_id</b> to view or modify their grants.
+              </p>
+            </div>
 
-        <form onSubmit={onSubmit} className="mt-3 flex items-stretch gap-2 max-w-xl">
-          <input
-            id="emp-uid"
-            autoFocus
-            value={uniqueId}
-            onChange={(e) => setUniqueId(e.target.value)}
-            placeholder="e.g., 1234-567-890"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
-          />
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-            disabled={!uniqueId.trim()}
-          >
-            Search
-          </button>
-        </form>
-      </div>
+            {/* Alerts */}
+            {note && (
+              <div
+                className={`rounded-lg border p-3 text-sm mb-6 ${
+                  note.type === "ok"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}
+              >
+                {note.text}
+              </div>
+            )}
 
-      {/* Alerts */}
-      {note && (
-        <div
-          className={`rounded-md border p-3 text-sm mb-5 ${
-            note.type === "ok"
-              ? "border-green-300 text-green-700 bg-green-50"
-              : "border-red-300 text-red-700 bg-red-50"
-          }`}
-        >
-          {note.text}
-        </div>
-      )}
+            {/* Search */}
+            <form onSubmit={onSubmit} className="mx-auto max-w-2xl mb-8 flex items-stretch gap-2">
+              <input
+                id="emp-uid"
+                autoFocus
+                value={uniqueId}
+                onChange={(e) => setUniqueId(e.target.value)}
+                placeholder="Enter employee unique_id (e.g., 1234-567-890)"
+                className="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                disabled={!uniqueId.trim()}
+              >
+                Search
+              </button>
+            </form>
 
-      {/* Results */}
-      {!hasQuery ? (
-        <div className="p-6 bg-white rounded-xl shadow-sm border max-w-xl">
-          <div className="text-sm text-gray-700">
-            Enter an employee <b>unique_id</b> above to see their grants.
+            {/* Results */}
+            {!hasQuery ? (
+              <div className="p-6 bg-gray-50 rounded-lg border text-sm text-gray-700 mx-auto max-w-2xl">
+                Enter an employee <b>unique_id</b> above to see their grants.
+              </div>
+            ) : loading ? (
+              <div className="p-6 bg-gray-50 rounded-lg border mx-auto max-w-2xl">Loading…</div>
+            ) : !items?.length ? (
+              <div className="p-6 bg-gray-50 rounded-lg border mx-auto max-w-2xl">
+                No grants found for <span className="font-medium">{urlId || uniqueId}</span>.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {items.map((g) => {
+                  const type =
+                    g.preferred_shares > 0
+                      ? "PREFERRED"
+                      : g.common_shares > 0
+                      ? "COMMON"
+                      : g.rsu_shares > 0
+                      ? "RSU"
+                      : g.iso_shares > 0
+                      ? "ISO"
+                      : g.nqo_shares > 0
+                      ? "NQO"
+                      : "—";
+
+                  const rawPrice =
+                    g.rsu_shares > 0 ? companyFMV : g.strike_price ?? g.purchase_price ?? null;
+                  const price = rawPrice != null ? formatMoney(rawPrice) : null;
+
+                  const effectiveId = (urlId || uniqueId).trim();
+
+                  return (
+                    <article
+                      key={g.id}
+                      className="bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      <div className="px-4 py-3 space-y-2">
+                        <StatRow label="Class" value={g.stock_class_name ?? "—"} />
+                        <StatRow label="Series" value={g.series_name ?? "—"} />
+                        <StatRow
+                          label="Total Shares"
+                          value={g.num_shares ? g.num_shares.toLocaleString() : "—"}
+                        />
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <Pill label="Type" value={type} />
+                          <Pill label="Status" value={g.vesting_status ?? "—"} />
+                        </div>
+                        <div className="border-t mt-2" />
+                        <StatRow label="Price" value={price ? `$${price}` : "—"} />
+                      </div>
+                      <div className="px-4 pb-4 pt-2">
+                        <Link
+                          to={`/dashboard/grants/${encodeURIComponent(effectiveId)}/${g.id}`}
+                          className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 w-full"
+                        >
+                          Select
+                        </Link>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-      ) : loading ? (
-        <div className="p-6 bg-white rounded-xl shadow-sm border">Loading…</div>
-      ) : !items?.length ? (
-        <div className="p-6 bg-white rounded-xl shadow-sm border">
-          No grants found for <span className="font-medium">{urlId || uniqueId}</span>.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {items.map((g) => {
-            const type =
-              g.preferred_shares > 0
-                ? "PREFERRED"
-                : g.common_shares > 0
-                ? "COMMON"
-                : g.rsu_shares > 0
-                ? "RSU"
-                : g.iso_shares > 0
-                ? "ISO"
-                : g.nqo_shares > 0
-                ? "NQO"
-                : "—";
-
-            const rawPrice = g.rsu_shares > 0 ? companyFMV : (g.strike_price ?? g.purchase_price ?? null);
-            const price = rawPrice != null ? formatMoney(rawPrice) : null;
-
-            const effectiveId = (urlId || uniqueId).trim();
-
-            return (
-              <article key={g.id} className="bg-white rounded-xl shadow hover:shadow-md transition-shadow">
-                <div className="px-4 py-3 space-y-2">
-                  <StatRow label="Class" value={g.stock_class_name ?? "—"} />
-                  <StatRow label="Series" value={g.series_name ?? "—"} />
-                  <StatRow
-                    label="Total Shares"
-                    value={g.num_shares ? g.num_shares.toLocaleString() : "—"}
-                  />
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <Pill label="Type" value={type} />
-                    <Pill label="Status" value={g.vesting_status ?? "—"} />
-                  </div>
-                  <div className="border-t mt-2" />
-                  <StatRow label="Price" value={price ? `$${price}` : "—"} />
-                </div>
-                <div className="px-4 pb-4 pt-2">
-                  <Link
-                    to={`/dashboard/grants/${encodeURIComponent(effectiveId)}/${g.id}`}
-                    className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 w-full"
-                  >
-                    Select
-                  </Link>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

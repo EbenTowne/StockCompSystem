@@ -200,216 +200,223 @@ export default function ManageGrantDetail() {
   }, [schedule]);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header: Employee ID + Name (no 'Grant #') */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-semibold">
-            Employee: {uniqueId}
-            {empName ? ` — ${empName}` : ""}
-          </h1>
-          {data?.stock_class_name && (
-            <p className="text-xs text-gray-500 mt-1">
-              Viewing grant details ({data.stock_class_name}
-              {data.series_name ? ` / ${data.series_name}` : ""})
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => nav(`/dashboard/grants/${encodeURIComponent(uniqueId)}`)}
-            className="border rounded px-3 py-1.5"
-          >
-            Back to List
-          </button>
-          <button onClick={onDelete} className="border rounded px-3 py-1.5 text-red-600">
-            Delete
-          </button>
-          {!editing ? (
-            <button
-              onClick={() => setEditing(true)}
-              className="rounded px-3 py-1.5 text-white bg-blue-600 hover:bg-blue-700"
-            >
-              Edit
-            </button>
-          ) : (
-            <button
-              onClick={onSave}
-              className="rounded px-3 py-1.5 text-white bg-green-600 hover:bg-green-700"
-            >
-              Save
-            </button>
-          )}
-        </div>
-      </div>
-
-      {note && (
-        <div
-          className={`rounded-md border p-3 text-sm mb-5 ${
-            note.type === "ok"
-              ? "border-green-300 text-green-700 bg-green-50"
-              : "border-red-300 text-red-700 bg-red-50"
-          }`}
-        >
-          {note.text}
-        </div>
-      )}
-
-      {loading || !data ? (
-        <div className="p-4 bg-white rounded-xl shadow">Loading…</div>
-      ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* LEFT: details form */}
-          <section className="xl:col-span-2 bg-white rounded-xl shadow p-4 space-y-4">
-            <Section title="Overview" />
-            <FieldRow label="Stock Class" value={data.stock_class_name ?? "—"} />
-            <FieldRow label="Series" value={data.series_name ?? "—"} />
-            <FieldRow label="Vesting Status" value={<StatusBadge value={data.vesting_status} />} />
-            <FieldRow
-              label="Totals"
-              value={`${data.num_shares?.toLocaleString()} shares`}
-            />
-
-            <div className="border-t my-2" />
-
-            <Section
-              title="Pricing"
-              subtitle={
-                isRSU
-                  ? "RSUs use the company's Fair Market Value (FMV)."
-                  : needsStrike
-                  ? "Options use a Strike Price."
-                  : needsPurchase
-                  ? "Stock uses a Purchase Price."
-                  : undefined
-              }
-            />
-
-            <div className="grid md:grid-cols-2 gap-3">
-              <LabeledInput
-                label="Strike Price (ISO/NQO)"
-                type="number"
-                step="0.01"
-                placeholder={needsStrike ? "0.00" : "—"}
-                disabled={!editing || !needsStrike}
-                value={draft.strike_price ?? ""}
-                onChange={(v) => setDraft((d) => ({ ...d, strike_price: v }))}
-                prefix="$"
-              />
-              <LabeledInput
-                label="Purchase Price (Stock)"
-                type="number"
-                step="0.01"
-                placeholder={needsPurchase ? "0.00" : "—"}
-                disabled={!editing || !needsPurchase}
-                value={draft.purchase_price ?? ""}
-                onChange={(v) => setDraft((d) => ({ ...d, purchase_price: v }))}
-                prefix="$"
-              />
-            </div>
-
-            <div className="border-t my-2" />
-
-            <Section title="Vesting" />
-
-            <div className="grid md:grid-cols-2 gap-3">
-              <LabeledInput
-                label="Vesting Start"
-                type="date"
-                disabled={!editing || isPreferred}
-                value={draft.vesting_start ?? ""}
-                onChange={(v) => setDraft((d) => ({ ...d, vesting_start: v }))}
-              />
-              <LabeledInput
-                label="Vesting End"
-                type="date"
-                disabled={!editing || isPreferred}
-                value={draft.vesting_end ?? ""}
-                onChange={(v) => setDraft((d) => ({ ...d, vesting_end: v }))}
-              />
-              <div className="md:col-span-2">
-                <label className="block text-sm mb-1">Vesting Frequency</label>
-                <select
-                  className="w-full border rounded-lg px-3 py-2"
-                  disabled={!editing || isPreferred}
-                  value={draft.vesting_frequency ?? "MONTHLY"}
-                  onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      vesting_frequency: e.target.value as Detail["vesting_frequency"],
-                    }))
-                  }
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
+      <div className="w-full">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
+          <div className="px-8 py-6">
+            {/* Header: Employee + actions */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="text-center sm:text-left">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Employee: {uniqueId}
+                  {empName ? ` — ${empName}` : ""}
+                </h1>
+                {data?.stock_class_name && (
+                  <p className="text-sm text-gray-600">
+                    Viewing grant details ({data.stock_class_name}
+                    {data.series_name ? ` / ${data.series_name}` : ""})
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => nav(`/dashboard/grants/${encodeURIComponent(uniqueId)}`)}
+                  className="border rounded-lg px-3 py-1.5 hover:bg-gray-50"
                 >
-                  <option value="DAILY">Daily</option>
-                  <option value="WEEKLY">Weekly</option>
-                  <option value="BIWEEKLY">Bi-weekly</option>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="YEARLY">Yearly</option>
-                </select>
+                  Back to List
+                </button>
+                <button
+                  onClick={onDelete}
+                  className="border rounded-lg px-3 py-1.5 text-red-600 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+                {!editing ? (
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="rounded-lg px-3 py-1.5 text-white bg-blue-600 hover:bg-blue-700"
+                  >
+                    Edit
+                  </button>
+                ) : (
+                  <button
+                    onClick={onSave}
+                    className="rounded-lg px-3 py-1.5 text-white bg-green-600 hover:bg-green-700"
+                  >
+                    Save
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Vesting schedule / chart */}
-            <div className="border-t my-2" />
-            <Section title="Vesting Schedule" />
-            {isPreferred ? (
-              <div className="rounded-lg border p-3 bg-gray-50 text-sm text-gray-700">
-                Preferred shares vest immediately. No vesting schedule to display.
-              </div>
-            ) : chartData.length ? (
-              <div className="rounded-lg border p-3 bg-white">
-                <div className="text-xs text-gray-500 mb-2">
-                  Cumulative vested shares over time
-                </div>
-                <div style={{ width: "100%", height: 260 }}>
-                  <ResponsiveContainer>
-                    <LineChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 12 }}
-                        interval="preserveStartEnd"
-                        tickFormatter={(d: string) => formatDateShort(d)}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(n) => formatShares(n)}
-                        allowDecimals={false}
-                      />
-                      <Tooltip
-                        formatter={(value: any) => [formatShares(value as number), "Cumulative Vested"]}
-                        labelFormatter={(label) => `Date: ${formatDateLong(label as string)}`}
-                      />
-                      <Line type="monotone" dataKey="cumulative" dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-lg border p-3 bg-gray-50 text-sm text-gray-700">
-                No schedule data available for this grant.
+            {/* Alerts */}
+            {note && (
+              <div
+                className={`rounded-lg border p-3 text-sm mb-6 ${
+                  note.type === "ok"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}
+              >
+                {note.text}
               </div>
             )}
-          </section>
 
-          {/* RIGHT: summary card */}
-          <aside className="bg-white rounded-xl shadow p-4 space-y-3">
-            <h3 className="text-sm font-semibold">Summary</h3>
-            <div className="text-xs text-gray-600 space-y-1">
-              <Row label="Type" value={<TypeBadge value={type} />} />
-              <Row label="Status" value={<StatusBadge value={data.vesting_status} />} />
-              <Row label="Total Shares" value={data.num_shares?.toLocaleString() ?? "—"} />
-              <Row label={isRSU ? "RSU Price (FMV)" : "Price"} value={displayPrice} />
-              {isRSU && (
-                <Row
-                  label="FMV Source"
-                  value={company?.name ? `${company.name} / Company Settings` : "Company Settings"}
-                />
-              )}
-            </div>
-          </aside>
+            {loading || !data ? (
+              <div className="p-6 bg-gray-50 rounded-lg border">Loading…</div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {/* LEFT: details form */}
+                <section className="xl:col-span-2 bg-gray-50 rounded-lg border p-6 space-y-4">
+                  <Section title="Overview" />
+                  <FieldRow label="Stock Class" value={data.stock_class_name ?? "—"} />
+                  <FieldRow label="Series" value={data.series_name ?? "—"} />
+                  <FieldRow label="Vesting Status" value={<StatusBadge value={data.vesting_status} />} />
+                  <FieldRow label="Totals" value={`${data.num_shares?.toLocaleString()} shares`} />
+
+                  <div className="border-t my-2" />
+
+                  <Section
+                    title="Pricing"
+                    subtitle={
+                      isRSU
+                        ? "RSUs use the company's Fair Market Value (FMV)."
+                        : needsStrike
+                        ? "Options use a Strike Price."
+                        : needsPurchase
+                        ? "Stock uses a Purchase Price."
+                        : undefined
+                    }
+                  />
+
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <LabeledInput
+                      label="Strike Price (ISO/NQO)"
+                      type="number"
+                      step="0.01"
+                      placeholder={needsStrike ? "0.00" : "—"}
+                      disabled={!editing || !needsStrike}
+                      value={draft.strike_price ?? ""}
+                      onChange={(v) => setDraft((d) => ({ ...d, strike_price: v }))}
+                      prefix="$"
+                    />
+                    <LabeledInput
+                      label="Purchase Price (Stock)"
+                      type="number"
+                      step="0.01"
+                      placeholder={needsPurchase ? "0.00" : "—"}
+                      disabled={!editing || !needsPurchase}
+                      value={draft.purchase_price ?? ""}
+                      onChange={(v) => setDraft((d) => ({ ...d, purchase_price: v }))}
+                      prefix="$"
+                    />
+                  </div>
+
+                  <div className="border-t my-2" />
+
+                  <Section title="Vesting" />
+
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <LabeledInput
+                      label="Vesting Start"
+                      type="date"
+                      disabled={!editing || isPreferred}
+                      value={draft.vesting_start ?? ""}
+                      onChange={(v) => setDraft((d) => ({ ...d, vesting_start: v }))}
+                    />
+                    <LabeledInput
+                      label="Vesting End"
+                      type="date"
+                      disabled={!editing || isPreferred}
+                      value={draft.vesting_end ?? ""}
+                      onChange={(v) => setDraft((d) => ({ ...d, vesting_end: v }))}
+                    />
+                    <div className="md:col-span-2">
+                      <label className="block text-sm mb-1">Vesting Frequency</label>
+                      <select
+                        className="w-full border rounded-lg px-3 py-2"
+                        disabled={!editing || isPreferred}
+                        value={draft.vesting_frequency ?? "MONTHLY"}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            vesting_frequency: e.target.value as Detail["vesting_frequency"],
+                          }))
+                        }
+                      >
+                        <option value="DAILY">Daily</option>
+                        <option value="WEEKLY">Weekly</option>
+                        <option value="BIWEEKLY">Bi-weekly</option>
+                        <option value="MONTHLY">Monthly</option>
+                        <option value="YEARLY">Yearly</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Vesting schedule / chart */}
+                  <div className="border-t my-2" />
+                  <Section title="Vesting Schedule" />
+                  {isPreferred ? (
+                    <div className="rounded-lg border p-3 bg-white text-sm text-gray-700">
+                      Preferred shares vest immediately. No vesting schedule to display.
+                    </div>
+                  ) : chartData.length ? (
+                    <div className="rounded-lg border p-3 bg-white">
+                      <div className="text-xs text-gray-500 mb-2">
+                        Cumulative vested shares over time
+                      </div>
+                      <div style={{ width: "100%", height: 260 }}>
+                        <ResponsiveContainer>
+                          <LineChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              dataKey="date"
+                              tick={{ fontSize: 12 }}
+                              interval="preserveStartEnd"
+                              tickFormatter={(d: string) => formatDateShort(d)}
+                            />
+                            <YAxis
+                              tick={{ fontSize: 12 }}
+                              tickFormatter={(n) => formatShares(n)}
+                              allowDecimals={false}
+                            />
+                            <Tooltip
+                              formatter={(value: any) => [formatShares(value as number), "Cumulative Vested"]}
+                              labelFormatter={(label) => `Date: ${formatDateLong(label as string)}`}
+                            />
+                            <Line type="monotone" dataKey="cumulative" dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border p-3 bg-white text-sm text-gray-700">
+                      No schedule data available for this grant.
+                    </div>
+                  )}
+                </section>
+
+                {/* RIGHT: summary card */}
+                <aside className="bg-gray-50 rounded-lg border p-6 space-y-3">
+                  <h3 className="text-sm font-semibold">Summary</h3>
+                  <div className="text-xs text-gray-600 space-y-1">
+                    <Row label="Type" value={<TypeBadge value={type} />} />
+                    <Row label="Status" value={<StatusBadge value={data.vesting_status} />} />
+                    <Row label="Total Shares" value={data.num_shares?.toLocaleString() ?? "—"} />
+                    <Row label={isRSU ? "RSU Price (FMV)" : "Price"} value={displayPrice} />
+                    {isRSU && (
+                      <Row
+                        label="FMV Source"
+                        value={company?.name ? `${company.name} / Company Settings` : "Company Settings"}
+                      />
+                    )}
+                  </div>
+                </aside>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -427,7 +434,7 @@ function Section({ title, subtitle }: { title: string; subtitle?: string }) {
 
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border px-3 py-2 bg-gray-50">
+    <div className="flex items-center justify-between rounded-lg border px-3 py-2 bg-white">
       <span className="text-xs text-gray-600">{label}</span>
       <span className="text-sm">{value}</span>
     </div>
@@ -501,9 +508,7 @@ function StatusBadge({ value }: { value?: string }) {
       ? "text-gray-700 bg-gray-50 border-gray-200"
       : "text-gray-800 bg-gray-50 border-gray-200";
 
-  return (
-    <span className={`text-[12px] px-2 py-0.5 rounded-full border ${color}`}>{text}</span>
-  );
+  return <span className={`text-[12px] px-2 py-0.5 rounded-full border ${color}`}>{text}</span>;
 }
 
 function TypeBadge({ value }: { value: string }) {

@@ -160,9 +160,9 @@ class EquityGrant(models.Model):
         # keep your existing cliff auto-calc exactly as-is
         if self.vesting_start:
             today = timezone.now().date()
-            if today > self.vesting_start:
-                rd = relativedelta(today, self.vesting_start)
-                self.cliff_months = rd.years * 12 + rd.months
+            if self.vesting_start and self.grant_date:
+                rd = relativedelta(self.vesting_start, self.grant_date)
+                self.cliff_months = max(rd.years * 12 + rd.months, 0)
             else:
                 self.cliff_months = 0
 

@@ -3,8 +3,10 @@ from django.urls import path, include
 
 from .views_ai import EmployerChatView
 from .views import (
+    CompanyFinancialsDeleteView,
     CompanyFinancialsView,
     DeleteAccountView,
+    EmployeeDeleteView,
     EmployeeInviteValidateView,
     EmployerRegistrationView,
     EmployeeInviteView,
@@ -33,5 +35,7 @@ urlpatterns = [
     path("auth/change-password/", ChangePasswordView.as_view(), name="change-password"),
     path('company/', CompanyDetailView.as_view(), name='company-detail'),
     path("company/financials/", CompanyFinancialsView.as_view(), name="company-financials"),
+    path("company/financials/<int:year>/", CompanyFinancialsDeleteView.as_view(), name="company-financials-delete"),
     path("ai/employer-query/", EmployerChatView.as_view(), name="ai-employer-query"),
+    path('employees/<str:unique_id>/', EmployeeDeleteView.as_view(), name='employee-delete'),
 ]

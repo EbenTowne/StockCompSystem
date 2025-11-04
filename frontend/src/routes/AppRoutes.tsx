@@ -11,7 +11,6 @@ import EmployeeDashboardPage from '../pages/EmployeeDashboardPage'
 // employer pages
 import EmployerLayout from "../components/EmployerLayout"
 import DashboardPage from "../pages/DashboardPage"
-import InviteEmployee from "../pages/InviteEmployee"
 import CreateGrant from "../pages/CreateGrant"
 import CapTable from "../pages/CapTable"
 import AIChatbot from "../pages/AIChatbot"
@@ -48,7 +47,6 @@ export default function AppRoutes() {
         }
       >
         <Route index element={<Navigate to="company-metrics" replace />} />
-        <Route path="invite" element={<InviteEmployee />} />
         <Route path="create-grant" element={<CreateGrant />} />
 
         {/* Unified Manage Grants:
