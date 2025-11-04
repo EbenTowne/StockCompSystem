@@ -104,7 +104,7 @@ DATABASES = {
         "NAME": "test_psql",
         "USER": "postgres",
         "PASSWORD": "endlessmoments",
-        "HOST": "database-1.cwv0648gmaox.us-east-1.rds.amazonaws.com",
+        "HOST": "database-1.cxkc2skuuz7g.us-east-2.rds.amazonaws.com",
         "PORT": "5432",
         "OPTIONS": {
             "sslmode": "require",         # RDS expects SSL
