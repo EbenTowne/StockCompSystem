@@ -21,7 +21,7 @@ export default function EmployerTaskbar() {
           Create New Option
         </NavLink>
         <NavLink to="grants" className={({ isActive }) => (isActive ? active : base)}>
-          Manage Stock Options
+          Manage Options
         </NavLink>
         <NavLink to="cap-table" className={({ isActive }) => (isActive ? active : base)}>
           Cap Table

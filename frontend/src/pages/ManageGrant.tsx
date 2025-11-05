@@ -78,14 +78,11 @@ export default function ManageGrants() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
       <div className="w-full">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full ring-1 ring-black/5">
           <div className="px-8 py-6">
             {/* Page header */}
             <div className="mb-8 text-center">
-              <h1 className="text-2xl font-bold text-gray-900">Manage Grants</h1>
-              <p className="text-sm text-gray-600">
-                Look up an employee by <b>unique_id</b> to view or modify their grants.
-              </p>
+              <h1 className="text-3xl font-bold text-gray-900">Manage Existing Options</h1>
             </div>
 
             {/* Alerts */}
@@ -102,18 +99,23 @@ export default function ManageGrants() {
             )}
 
             {/* Search */}
-            <form onSubmit={onSubmit} className="mx-auto max-w-2xl mb-8 flex items-stretch gap-2">
+            <form
+              onSubmit={onSubmit}
+              className={`mx-auto max-w-2xl flex items-stretch gap-2 ${
+                items?.length ? "mb-16 md:mb-20" : "mb-8"
+              }`}
+            >
               <input
                 id="emp-uid"
                 autoFocus
                 value={uniqueId}
                 onChange={(e) => setUniqueId(e.target.value)}
-                placeholder="Enter employee unique_id (e.g., 1234-567-890)"
-                className="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
+                placeholder="Enter ID (e.g., 1234-567-890)"
+                className="flex-1 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
               />
               <button
                 type="submit"
-                className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
                 disabled={!uniqueId.trim()}
               >
                 Search
@@ -123,7 +125,9 @@ export default function ManageGrants() {
             {/* Results */}
             {!hasQuery ? (
               <div className="p-6 bg-gray-50 rounded-lg border text-sm text-gray-700 mx-auto max-w-2xl">
-                Enter an employee <b>unique_id</b> above to see their grants.
+                Enter an <b>Employee ID</b> in the searchbar above to view their issued options.
+                Alternatively you can navigate to "Manage Employees" and select "Manage" next to the
+                desired employee.
               </div>
             ) : loading ? (
               <div className="p-6 bg-gray-50 rounded-lg border mx-auto max-w-2xl">Loading…</div>
@@ -132,7 +136,7 @@ export default function ManageGrants() {
                 No grants found for <span className="font-medium">{urlId || uniqueId}</span>.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="mt-6 md:mt-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {items.map((g) => {
                   const type =
                     g.preferred_shares > 0
@@ -175,7 +179,7 @@ export default function ManageGrants() {
                       <div className="px-4 pb-4 pt-2">
                         <Link
                           to={`/dashboard/grants/${encodeURIComponent(effectiveId)}/${g.id}`}
-                          className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 w-full"
+                          className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 w-full"
                         >
                           Select
                         </Link>

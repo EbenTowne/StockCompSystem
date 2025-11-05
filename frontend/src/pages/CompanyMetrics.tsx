@@ -129,9 +129,9 @@ type Slice = { label: string; value: number; color: string };
 
 const DonutChart = React.memo(function DonutChart({
   data,
-  size = 240,
+  size = 220,
   thickness = 24,
-  gap = 2, // px gap along the ring between segments
+  gap = 2,
   centerLabel,
 }: {
   data: Slice[];
@@ -146,16 +146,16 @@ const DonutChart = React.memo(function DonutChart({
   );
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
-  const gapLen = Math.min(gap, Math.max(0, circumference * 0.02)); // cap gap
+  const gapLen = Math.min(gap, Math.max(0, circumference * 0.02));
 
   let cumulative = 0;
   const segments = data.map((d) => {
     const fraction = Math.max(0, d.value) / total;
     const rawLen = circumference * fraction;
-    const length = Math.max(0, rawLen - gapLen); // subtract a small gap
+    const length = Math.max(0, rawLen - gapLen);
     const dasharray = `${length} ${circumference - length}`;
-    const dashoffset = circumference * 0.25 - cumulative; // start at 12 o'clock
-    cumulative += length + gapLen; // advance including the gap
+    const dashoffset = circumference * 0.25 - cumulative;
+    cumulative += length + gapLen;
     return { ...d, dasharray, dashoffset };
   });
 
@@ -199,10 +199,11 @@ const DonutChart = React.memo(function DonutChart({
   );
 });
 
+/** Indigo-forward palette */
 const PIE_COLORS = [
-  "#111827", "#2563eb", "#16a34a", "#f59e0b", "#dc2626",
-  "#7c3aed", "#059669", "#ea580c", "#9333ea", "#0ea5e9",
-  "#84cc16", "#e11d48"
+  "#4f46e5", "#6366f1", "#4338ca", "#818cf8", "#a5b4fc",
+  "#7c3aed", "#8b5cf6", "#3b82f6", "#1d4ed8", "#0ea5e9",
+  "#06b6d4", "#0891b2",
 ];
 
 // ---------- Component ----------
@@ -225,7 +226,7 @@ export default function CompanyMetrics() {
 
   // dropdowns CLOSED by default
   const [openSeries, setOpenSeries] = useState(false);
-  const [openClasses, setOpenClasses] = useState(true); // open so screenshots match
+  const [openClasses, setOpenClasses] = useState(false);
   const [openFinancials, setOpenFinancials] = useState(false);
 
   // modals
@@ -413,14 +414,12 @@ export default function CompanyMetrics() {
     // sort by value desc
     perClass.sort((a, b) => b.value - a.value);
 
-    // keep top N, group rest
     const TOP_N = 6;
     const top = perClass.slice(0, TOP_N);
     const rest = perClass.slice(TOP_N);
     const otherSum = rest.reduce((s, r) => s + r.value, 0);
     if (otherSum > 0) top.push({ label: "Other", value: otherSum });
 
-    // attach colors
     return top.map((d, i) => ({
       ...d,
       color: d.label === "Unallocated" ? "#9ca3af" : d.label === "Other" ? "#cbd5e1" : PIE_COLORS[i % PIE_COLORS.length],
@@ -429,6 +428,19 @@ export default function CompanyMetrics() {
 
   const totalForPct = Math.max(1, pieData.reduce((s, p) => s + p.value, 0));
   const percent = (n: number) => Math.round((n / totalForPct) * 100);
+
+  // ---------- Legend (sorted; Unallocated last) ----------
+  const legendItems = useMemo(() => {
+    const items = [...pieData];
+    items.sort((a, b) => {
+      const aUnalloc = a.label.toLowerCase() === "unallocated";
+      const bUnalloc = b.label.toLowerCase() === "unallocated";
+      if (aUnalloc && !bUnalloc) return 1;
+      if (bUnalloc && !aUnalloc) return -1;
+      return b.value - a.value;
+    });
+    return items;
+  }, [pieData]);
 
   // ---------- Form helpers ----------
   function updateField<K extends keyof CompanyForm>(key: K, value: CompanyForm[K]) {
@@ -638,7 +650,7 @@ export default function CompanyMetrics() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
       <div className="w-full">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full ring-1 ring-black/5">
           <div className="px-8 py-6">
             {/* Page header */}
             <div className="mb-8 text-center">
@@ -660,22 +672,39 @@ export default function CompanyMetrics() {
             )}
 
             {/* ===== Top row: Metrics + Share Allocation ===== */}
-            <section className="grid grid-cols-1 2XL:grid-cols-[1.1fr_0.9fr] xl:grid-cols-2 gap-6 mb-10 items-stretch">
-              {/* Company Metrics */}
+            <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-10 items-stretch">
+              {/* Company Metrics (cleaned layout) */}
               <div>
                 <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 h-full">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-1">
                     <h2 className="text-lg font-semibold text-gray-900">Company Metrics</h2>
                   </div>
 
-                  <form onSubmit={onSave} className="space-y-6" aria-label="Company metrics form">
+                  <form onSubmit={onSave} className="space-y-5" aria-label="Company metrics form">
+                    {/* Row 1 */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm mb-1 text-gray-700">Current Market Value</label>
-                        <div className="relative">
+                      <label className="block">
+                        <span className="block text-sm text-gray-700">Total Authorized Shares</span>
+                        <input
+                          aria-label="Total Authorized Shares"
+                          className="mt-1 w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={formatSharesDisplay(form.total_authorized_shares)}
+                          onChange={(e) => updateField("total_authorized_shares", e.target.value.replace(/\D/g, ""))}
+                          onBlur={(e) => updateField("total_authorized_shares", e.target.value.replace(/\D/g, "") || "0")}
+                          placeholder="0"
+                          inputMode="numeric"
+                        />
+                        <span className="mt-1 block text-xs text-gray-600">
+                          Remaining: <b className="tabular-nums">{remainingShares.toLocaleString()}</b>
+                        </span>
+                      </label>
+
+                      <label className="block">
+                        <span className="block text-sm text-gray-700">Current Market Value</span>
+                        <div className="relative mt-1">
                           <input
                             aria-label="Current Market Value"
-                            className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             value={formatWithCommas(sanitizeNumberInput(form.current_market_value))}
                             onChange={(e) => updateField("current_market_value", sanitizeNumberInput(e.target.value))}
                             onBlur={(e) => updateField("current_market_value", sanitizeNumberInput(e.target.value) || "0")}
@@ -686,34 +715,17 @@ export default function CompanyMetrics() {
                             $
                           </span>
                         </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <label className="block text-sm mb-1 text-gray-700">Total Authorized Shares</label>
-                          <span className="text-xs text-gray-600">
-                            Remaining: <b>{remainingShares.toLocaleString()}</b>
-                          </span>
-                        </div>
-                        <input
-                          aria-label="Total Authorized Shares"
-                          className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={formatSharesDisplay(form.total_authorized_shares)}
-                          onChange={(e) => updateField("total_authorized_shares", e.target.value.replace(/\D/g, ""))}
-                          onBlur={(e) => updateField("total_authorized_shares", e.target.value.replace(/\D/g, "") || "0")}
-                          placeholder="0"
-                          inputMode="numeric"
-                        />
-                      </div>
+                      </label>
                     </div>
 
+                    {/* Row 2 */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm mb-1 text-gray-700">FMV</label>
-                        <div className="relative">
+                      <label className="block">
+                        <span className="block text-sm text-gray-700">FMV</span>
+                        <div className="relative mt-1">
                           <input
                             aria-label="Fair Market Value"
-                            className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             value={formatWithCommas(sanitizeNumberInput(form.current_fmv))}
                             onChange={(e) => updateField("current_fmv", sanitizeNumberInput(e.target.value))}
                             onBlur={(e) => updateField("current_fmv", sanitizeNumberInput(e.target.value) || "0")}
@@ -724,14 +736,14 @@ export default function CompanyMetrics() {
                             $
                           </span>
                         </div>
-                      </div>
+                      </label>
 
-                      <div>
-                        <label className="block text-sm mb-1 text-gray-700">Volatility</label>
-                        <div className="relative">
+                      <label className="block">
+                        <span className="block text-sm text-gray-700">Volatility</span>
+                        <div className="relative mt-1">
                           <input
                             aria-label="Volatility percent"
-                            className="w-full border rounded-lg pr-10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border rounded-lg pr-10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             value={form.volatility.replace(/\D/g, "") || "0"}
                             onChange={(e) => updateField("volatility", e.target.value.replace(/\D/g, ""))}
                             onBlur={(e) => updateField("volatility", e.target.value.replace(/\D/g, "") || "0")}
@@ -742,14 +754,14 @@ export default function CompanyMetrics() {
                             %
                           </span>
                         </div>
-                      </div>
+                      </label>
 
-                      <div>
-                        <label className="block text-sm mb-1 text-gray-700">Risk Free Rate</label>
-                        <div className="relative">
+                      <label className="block">
+                        <span className="block text-sm text-gray-700">Risk Free Rate</span>
+                        <div className="relative mt-1">
                           <input
                             aria-label="Risk-free rate percent"
-                            className="w-full border rounded-lg pr-10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border rounded-lg pr-10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             value={form.risk_free_rate.replace(/\D/g, "") || "0"}
                             onChange={(e) => updateField("risk_free_rate", e.target.value.replace(/\D/g, ""))}
                             onBlur={(e) => updateField("risk_free_rate", e.target.value.replace(/\D/g, "") || "0")}
@@ -760,14 +772,14 @@ export default function CompanyMetrics() {
                             %
                           </span>
                         </div>
-                      </div>
+                      </label>
                     </div>
 
-                    <div className="pt-1 flex gap-3">
+                    <div className="pt-2 flex gap-3 justify-end">
                       <button
                         type="submit"
                         disabled={saving}
-                        className="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                        className="bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
                       >
                         {saving ? "Saving…" : "Save Changes"}
                       </button>
@@ -776,14 +788,10 @@ export default function CompanyMetrics() {
                 </div>
               </div>
 
-              {/* Share Allocation */}
+              {/* Share Allocation (heading removed; spacing increased) */}
               <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 flex flex-col">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">Share Allocation</h3>
-                </div>
-
                 {/* KPIs for quick glance */}
-                <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="grid grid-cols-3 gap-3 mb-6 md:mb-8">
                   <div className="rounded-lg border bg-white p-3 text-center">
                     <div className="text-[11px] text-gray-500">Authorized</div>
                     <div className="text-sm font-semibold tabular-nums">
@@ -809,12 +817,12 @@ export default function CompanyMetrics() {
                     Set <b>Total Authorized Shares</b> to see allocation.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] gap-6 items-center">
+                  <div className="mt-1 grid grid-cols-1 md:grid-cols-[minmax(240px,280px)_minmax(0,1fr)] gap-7 items-start">
                     {/* Fixed chart column */}
                     <div className="flex justify-center md:justify-start">
                       <DonutChart
                         data={pieData}
-                        size={240}
+                        size={220}
                         thickness={24}
                         gap={2}
                         centerLabel={
@@ -828,10 +836,13 @@ export default function CompanyMetrics() {
                       />
                     </div>
 
-                    {/* Flexible legend column — SINGLE COLUMN */}
+                    {/* Legend column */}
                     <div className="min-w-0">
-                      <ul className="grid grid-cols-1 gap-y-2 max-h-56 overflow-auto pr-1" aria-label="Share allocation legend">
-                        {pieData.map((s, i) => (
+                      <ul
+                        className="grid grid-cols-1 gap-y-2 max-h-[260px] overflow-auto pr-1"
+                        aria-label="Share allocation legend"
+                      >
+                        {legendItems.map((s, i) => (
                           <li key={i} className="flex items-center justify-between gap-3 text-sm min-w-0">
                             <span className="flex items-center gap-2 min-w-0">
                               <span
@@ -858,6 +869,77 @@ export default function CompanyMetrics() {
               </div>
             </section>
 
+            {/* ===== Series / Rounds ===== */}
+            <section className="mt-4 mb-10">
+              <div className="border rounded-lg bg-white">
+                <button
+                  type="button"
+                  onClick={() => setOpenSeries((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3"
+                  aria-expanded={openSeries}
+                >
+                  <span className="text-lg font-medium">Series / Rounds</span>
+                  <span className="text-gray-600">{openSeries ? "▾" : "▸"}</span>
+                </button>
+
+                <div
+                  className={`overflow-hidden transition-[max-height] duration-300 ${
+                    openSeries ? "max-h-[2000px]" : "max-h-0"
+                  }`}
+                >
+                  <div className="px-4 pb-4">
+                    <div className="flex items-center justify-end mb-2">
+                      <button
+                        type="button"
+                        className="rounded-lg px-3 py-1 border border-indigo-200 text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        onClick={() => setShowSeriesModal(true)}
+                      >
+                        + Add Series
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {series.length === 0 && (
+                        <div className="text-gray-500 text-sm border rounded-lg p-3">
+                          No series configured. Click “Add Series”.
+                        </div>
+                      )}
+
+                      {series.map((s) => (
+                        <div key={String(s.id)} className="grid grid-cols-12 gap-2 items-end border rounded-lg p-3">
+                          <div className="col-span-12 sm:col-span-7">
+                            <div className="text-xs text-gray-600 mb-1">Name</div>
+                            <div className="font-medium">{s.name}</div>
+                          </div>
+                          <div className="col-span-6 sm:col-span-3">
+                            <div className="text-xs text-gray-600 mb-1">Share Type</div>
+                            <div>{displaySeriesType(s.share_type)}</div>
+                          </div>
+                          <div className="col-span-6 sm:col-span-2 flex sm:justify-end">
+                            <button
+                              type="button"
+                              className="w-full sm:w-auto rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                              onClick={() => {
+                                const linked = classes.filter((c) => c.series?.id === Number(s.id)).length;
+                                const ok = confirm(
+                                  linked > 0
+                                    ? `This series has ${linked} linked class(es). Deleting the series will also delete those classes. Continue?`
+                                    : `Delete series "${s.name}"?`
+                                );
+                                if (ok) deleteSeries(s.id);
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {/* ===== Classes ===== */}
             <section className="mt-4 mb-10">
               <div className="border rounded-lg bg-white">
@@ -880,7 +962,7 @@ export default function CompanyMetrics() {
                     <div className="flex items-center justify-end mb-2">
                       <button
                         type="button"
-                        className="border rounded-lg px-3 py-1 hover:bg-gray-50"
+                        className="rounded-lg px-3 py-1 border border-indigo-200 text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         onClick={() => setShowClassModal(true)}
                       >
                         + Add Class
@@ -889,9 +971,7 @@ export default function CompanyMetrics() {
 
                     <div className="space-y-3">
                       {classes.length === 0 && (
-                        <div className="text-gray-500 text-sm border rounded-lg p-3">
-                          No classes configured. Click “Add Class”.
-                        </div>
+                        <div className="text-gray-500 text-sm">No classes configured. Click “Add Class”.</div>
                       )}
 
                       {classes.map((c) => {
@@ -937,7 +1017,7 @@ export default function CompanyMetrics() {
                             <div className="col-span-12 sm:col-span-12 flex sm:justify-end">
                               <button
                                 type="button"
-                                className="w-full sm:w-auto border rounded-lg px-3 py-2 hover:bg-gray-50"
+                                className="w-full sm:w-auto rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
                                 onClick={() => {
                                   if (confirm(`Delete class "${c.name}"?`)) deleteClass(c.id);
                                 }}
@@ -954,79 +1034,8 @@ export default function CompanyMetrics() {
               </div>
             </section>
 
-            {/* ===== Series / Rounds ===== */}
-            <section className="mt-4">
-              <div className="border rounded-lg bg-white">
-                <button
-                  type="button"
-                  onClick={() => setOpenSeries((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3"
-                  aria-expanded={openSeries}
-                >
-                  <span className="text-lg font-medium">Series / Rounds</span>
-                  <span className="text-gray-600">{openSeries ? "▾" : "▸"}</span>
-                </button>
-
-                <div
-                  className={`overflow-hidden transition-[max-height] duration-300 ${
-                    openSeries ? "max-h-[2000px]" : "max-h-0"
-                  }`}
-                >
-                  <div className="px-4 pb-4">
-                    <div className="flex items-center justify-end mb-2">
-                      <button
-                        type="button"
-                        className="border rounded-lg px-3 py-1 hover:bg-gray-50"
-                        onClick={() => setShowSeriesModal(true)}
-                      >
-                        + Add Series
-                      </button>
-                    </div>
-
-                    <div className="space-y-3">
-                      {series.length === 0 && (
-                        <div className="text-gray-500 text-sm border rounded-lg p-3">
-                          No series configured. Click “Add Series”.
-                        </div>
-                      )}
-
-                      {series.map((s) => (
-                        <div key={String(s.id)} className="grid grid-cols-12 gap-2 items-end border rounded-lg p-3">
-                          <div className="col-span-12 sm:col-span-7">
-                            <div className="text-xs text-gray-600 mb-1">Name</div>
-                            <div className="font-medium">{s.name}</div>
-                          </div>
-                          <div className="col-span-6 sm:col-span-3">
-                            <div className="text-xs text-gray-600 mb-1">Share Type</div>
-                            <div>{displaySeriesType(s.share_type)}</div>
-                          </div>
-                          <div className="col-span-6 sm:col-span-2 flex sm:justify-end">
-                            <button
-                              type="button"
-                              className="w-full sm:w-auto border rounded-lg px-3 py-2 hover:bg-gray-50"
-                              onClick={() => {
-                                const linked = classes.filter((c) => c.series?.id === Number(s.id)).length;
-                                const ok = confirm(
-                                  linked > 0
-                                    ? `This series has ${linked} linked class(es). Deleting the series will also delete those classes. Continue?`
-                                    : `Delete series "${s.name}"?`
-                                );
-                                if (ok) deleteSeries(s.id);
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
             {/* ===== Company Financials ===== */}
-            <section className="mt-10">
+            <section className="mt-4 mb-10">
               <div className="border rounded-lg bg-white">
                 <button
                   type="button"
@@ -1045,7 +1054,11 @@ export default function CompanyMetrics() {
                 >
                   <div className="px-4 pb-4">
                     <div className="flex items-center justify-end mb-2">
-                      <button type="button" className="border rounded-lg px-3 py-1 hover:bg-gray-50" onClick={addRow}>
+                      <button
+                        type="button"
+                        className="rounded-lg px-3 py-1 border border-indigo-200 text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        onClick={addRow}
+                      >
                         + Add Year
                       </button>
                     </div>
@@ -1060,7 +1073,7 @@ export default function CompanyMetrics() {
                             <label className="block text-sm mb-1">Year</label>
                             <input
                               type="number"
-                              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                               value={row.year}
                               onChange={(e) =>
                                 updateFinancial(i, "year", e.target.value === "" ? "" : Number(e.target.value))
@@ -1075,7 +1088,7 @@ export default function CompanyMetrics() {
                               <input
                                 type="number"
                                 step="0.01"
-                                className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 value={row.revenue ?? ""}
                                 onChange={(e) => updateFinancial(i, "revenue", e.target.value)}
                               />
@@ -1091,7 +1104,7 @@ export default function CompanyMetrics() {
                               <input
                                 type="number"
                                 step="0.01"
-                                className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 value={row.net_income ?? ""}
                                 onChange={(e) => updateFinancial(i, "net_income", e.target.value)}
                               />
@@ -1104,7 +1117,7 @@ export default function CompanyMetrics() {
                           <div className="col-span-12 sm:col-span-2 flex gap-2">
                             <button
                               type="button"
-                              className="w-1/2 border rounded-lg px-3 py-2 hover:bg-gray-50"
+                              className="w-1/2 rounded-lg px-3 py-2 bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                               onClick={() => saveFinancialRow(i)}
                               title="Save this year"
                             >
@@ -1113,7 +1126,7 @@ export default function CompanyMetrics() {
 
                             <button
                               type="button"
-                              className="w-1/2 border rounded-lg px-3 py-2 hover:bg-gray-50"
+                              className="w-1/2 rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
                               onClick={() => removeFinancialRow(i)}
                               title="Remove this year"
                             >
@@ -1137,7 +1150,7 @@ export default function CompanyMetrics() {
                     <label className="block">
                       <span className="block text-sm mb-1">Name</span>
                       <input
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         value={newClass.name}
                         onChange={(e) => setNewClass((s) => ({ ...s, name: e.target.value }))}
                       />
@@ -1148,7 +1161,7 @@ export default function CompanyMetrics() {
                       <input
                         type="number"
                         min={0}
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         value={newClass.total_class_shares}
                         onChange={(e) => setNewClass((s) => ({ ...s, total_class_shares: e.target.value }))}
                         placeholder="e.g. 1000000"
@@ -1158,7 +1171,7 @@ export default function CompanyMetrics() {
                     <label className="block">
                       <span className="block text-sm mb-1">Series (required)</span>
                       <select
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         value={newClass.series_id}
                         onChange={(e) => setNewClass((s) => ({ ...s, series_id: e.target.value }))}
                         required
@@ -1188,7 +1201,7 @@ export default function CompanyMetrics() {
                     <button className="border rounded-lg px-3 py-1 hover:bg-gray-50" onClick={() => setShowClassModal(false)}>
                       Cancel
                     </button>
-                    <button className="px-3 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700" onClick={createClass}>
+                    <button className="px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" onClick={createClass}>
                       Add
                     </button>
                   </div>
@@ -1204,7 +1217,7 @@ export default function CompanyMetrics() {
                     <label className="block">
                       <span className="block text-sm mb-1">Name</span>
                       <input
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         value={newSeries.name}
                         onChange={(e) => setNewSeries((s) => ({ ...s, name: e.target.value }))}
                       />
@@ -1213,7 +1226,7 @@ export default function CompanyMetrics() {
                     <label className="block">
                       <span className="block text-sm mb-1">Share Type</span>
                       <select
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         value={newSeries.share_type ?? ""}
                         onChange={(e) => {
                           const val = e.target.value === "" ? null : (e.target.value as "COMMON" | "PREFERRED");
@@ -1233,7 +1246,7 @@ export default function CompanyMetrics() {
                     <button className="border rounded-lg px-3 py-1 hover:bg-gray-50" onClick={() => setShowSeriesModal(false)}>
                       Cancel
                     </button>
-                    <button className="px-3 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700" onClick={createSeries}>
+                    <button className="px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" onClick={createSeries}>
                       Add
                     </button>
                   </div>

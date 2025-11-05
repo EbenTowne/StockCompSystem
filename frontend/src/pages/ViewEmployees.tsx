@@ -231,7 +231,7 @@ export default function ViewEmployees() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
       <div className="w-full">
         {/* Match CompanyMetrics: single full-width card with same shadow/radius */}
-        <section className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
+        <section className="bg-white rounded-xl shadow-lg overflow-hidden w-full ring-1 ring-black/5">
           {/* --- Header (clean, deployment-ready) --- */}
           <div className="px-8 py-6 border-b border-gray-100">
             <div className="flex items-start md:items-center justify-between gap-6">
@@ -260,7 +260,7 @@ export default function ViewEmployees() {
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Search by name or employee id"
                   aria-label="Search employees"
-                className="w-full rounded-lg border border-gray-300 pr-10 pl-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 pr-10 pl-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
                 <svg
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
@@ -356,7 +356,7 @@ export default function ViewEmployees() {
                                   )}`
                                 )
                               }
-                              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3.5 py-1.5 text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3.5 py-1.5 text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                               aria-label={`Manage grants for ${e.name ?? "employee"}`}
                             >
                               Manage
@@ -389,11 +389,11 @@ export default function ViewEmployees() {
                 onClick={load}
                 className="px-3 py-2 rounded-lg border text-sm hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                Reload
+                Reload Page
               </button>
               <button
                 onClick={() => setShowInvite(true)}
-                className="px-4 py-2 rounded-lg bg-black text-white text-sm hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm shadow-sm hover:bg-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400"
               >
                 Invite New Employee
               </button>
@@ -484,7 +484,7 @@ function InviteEmployeeModal({
             <label className="block">
               <span className="sr-only">Email</span>
               <input
-                className="w-full rounded-xl border border-gray-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full rounded-xl border border-gray-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

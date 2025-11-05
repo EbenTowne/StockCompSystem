@@ -1,28 +1,27 @@
-// frontend/src/EmployerPage.tsx
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { registerEmployer } from './auth';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { registerEmployer } from "./auth";
 
 export default function RegisterEmployerPage() {
   const nav = useNavigate();
   const [form, setForm] = useState({
-    username: '',
-    name: '',
-    email: '',
-    password: '',
-    company_name: '',
-    unique_id: '',
+    username: "",
+    name: "",
+    email: "",
+    password: "",
+    company_name: "",
+    unique_id: "",
   });
-  const [err, setErr] = useState('');
+  const [err, setErr] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setErr('');
-    
+    setErr("");
+
     try {
-      // pass a single object to registerEmployer
+      // keep exact payload/logic
       await registerEmployer({
         username: form.username,
         name: form.name,
@@ -31,20 +30,15 @@ export default function RegisterEmployerPage() {
         company_name: form.company_name,
         unique_id: form.unique_id,
       });
-      nav('/login');
-    } catch (err: any) {
-      const data = err.response?.data;
-      let message = 'Registration failed';
-      if (data && typeof data === 'object') {
-        // prefer username or email errors
+      nav("/login");
+    } catch (error: any) {
+      const data = error?.response?.data;
+      let message = "Registration failed";
+      if (data && typeof data === "object") {
         if (data.username) {
-          message = Array.isArray(data.username)
-            ? data.username.join(' ')
-            : String(data.username);
+          message = Array.isArray(data.username) ? data.username.join(" ") : String(data.username);
         } else if (data.email) {
-          message = Array.isArray(data.email)
-            ? data.email.join(' ')
-            : String(data.email);
+          message = Array.isArray(data.email) ? data.email.join(" ") : String(data.email);
         }
       }
       setErr(message);
@@ -53,133 +47,152 @@ export default function RegisterEmployerPage() {
     }
   };
 
-  const updateField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm({ ...form, [key]: e.target.value });
+  const updateField =
+    (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm({ ...form, [key]: e.target.value });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4 flex items-center justify-center">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="px-8 py-10">
-          <div className="text-center mb-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-16 px-6 lg:px-8 flex items-center justify-center">
+      <div className="w-full max-w-xl lg:max-w-2xl">
+        <div className="bg-white rounded-2xl shadow-lg ring-1 ring-black/5 overflow-hidden">
+          <div className="px-10 py-8 text-center">
             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4 text-blue-600 font-bold text-xl">
               E
             </div>
-            <h1 className="text-3xl font-bold text-gray-900">Register as Employer</h1>
+            <h1 className="text-3xl font-semibold text-gray-900">Register as Employer</h1>
             <p className="text-gray-600 mt-2">Create your employer account to get started</p>
           </div>
+          <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-400" />
 
-          {err && (
-            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded">
-              <p className="text-red-700 font-medium">{err}</p>
-            </div>
-          )}
+          <div className="px-10 py-8">
+            {err && (
+              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700 text-sm">
+                {err}
+              </div>
+            )}
 
-          <form onSubmit={submit} className="space-y-5">
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Username</label>
-              <input
-                type="text"
-                placeholder="Enter your username"
-                value={form.username}
-                onChange={updateField('username')}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                required
-              />
-            </div>
+            <form onSubmit={submit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Username</label>
+                <input
+                  type="text"
+                  placeholder="Enter your username"
+                  value={form.username}
+                  onChange={updateField("username")}
+                  className="mt-1 w-full h-12 rounded-lg border border-gray-300 px-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
 
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Full Name</label>
-              <input
-                type="text"
-                placeholder="Enter your full name"
-                value={form.name}
-                onChange={updateField('name')}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                required
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter your full name"
+                  value={form.name}
+                  onChange={updateField("name")}
+                  className="mt-1 w-full h-12 rounded-lg border border-gray-300 px-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
 
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Email</label>
-              <input
-                type="email"
-                placeholder="Enter your email"
-                value={form.email}
-                onChange={updateField('email')}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                required
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  value={form.email}
+                  onChange={updateField("email")}
+                  className="mt-1 w-full h-12 rounded-lg border border-gray-300 px-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
 
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Password</label>
-              <input
-                type="password"
-                placeholder="Create a secure password"
-                value={form.password}
-                onChange={updateField('password')}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                required
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Password</label>
+                <input
+                  type="password"
+                  placeholder="Create a secure password"
+                  value={form.password}
+                  onChange={updateField("password")}
+                  className="mt-1 w-full h-12 rounded-lg border border-gray-300 px-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
 
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Company Name</label>
-              <input
-                type="text"
-                placeholder="Enter your company name"
-                value={form.company_name}
-                onChange={updateField('company_name')}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                required
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Company Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter your company name"
+                  value={form.company_name}
+                  onChange={updateField("company_name")}
+                  className="mt-1 w-full h-12 rounded-lg border border-gray-300 px-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
 
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Unique ID</label>
-              <input
-                type="text"
-                placeholder="Enter your unique identifier"
-                value={form.unique_id}
-                onChange={updateField('unique_id')}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                required
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Unique ID</label>
+                <input
+                  type="text"
+                  placeholder="Enter your unique identifier"
+                  value={form.unique_id}
+                  onChange={updateField("unique_id")}
+                  className="mt-1 w-full h-12 rounded-lg border border-gray-300 px-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className={`w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ${
-                isLoading ? 'opacity-75 cursor-not-allowed' : 'hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
-              }`}
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </span>
-              ) : (
-                'Register'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Already have an account?{' '}
-              <button 
-                onClick={() => nav('/login')} 
-                className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+              <button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full inline-flex items-center justify-center h-12 rounded-lg text-white text-[15px] transition ${
+                  isLoading
+                    ? "bg-indigo-300 cursor-not-allowed"
+                    : "bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                }`}
               >
-                Sign in here
+                {isLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <svg
+                      className="animate-spin h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="10" className="opacity-25" stroke="currentColor" strokeWidth="4" />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                      />
+                    </svg>
+                    Processing…
+                  </span>
+                ) : (
+                  "Register"
+                )}
               </button>
-            </p>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                Already have an account?{" "}
+                <button
+                  onClick={() => nav("/login")}
+                  className="text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
+                >
+                  Sign in here
+                </button>
+              </p>
+            </div>
           </div>
         </div>
+
+        <p className="mt-5 text-center text-[11px] text-gray-500">
+          Accounts are reviewed for compliance. By registering you agree to the Terms.
+        </p>
       </div>
     </div>
   );

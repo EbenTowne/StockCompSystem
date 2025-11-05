@@ -200,14 +200,7 @@ export default function Header() {
               Sign Out
             </button>
           </div>
-        ) : (
-          <Link
-            to="/login"
-            className="pr-3 md:pr-4 rounded-lg px-4 py-2.5 text-base font-semibold text-indigo-300 hover:text-white hover:bg-indigo-600/20"
-          >
-            Sign In
-          </Link>
-        )}
+        ) : null}
       </div>
     </header>
   );

@@ -40,10 +40,10 @@ type FormState = {
   purchase_price: string;
 
   vesting_frequency: "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "YEARLY";
-  vesting_start: string; // defaults to today, editable
-  vesting_end: string;
-  grant_date: string; // Issue Date — read-only, today
-  cliff_months: string; // ↔ with start date
+  vesting_start: string; // editable
+  vesting_end: string;   // optional
+  grant_date: string;    // Issue Date — today
+  cliff_months: string;
 };
 
 // ---------- Helpers ----------
@@ -98,6 +98,80 @@ function addMonths(issueISO: string, cliffMonths: number): string {
   d.setMonth(d.getMonth() + cliffMonths);
   if (d.getDate() < origDay) d.setDate(0); // snap to month end if overflow
   return fmt(d);
+}
+
+// ---------- Small UI pieces ----------
+function Section({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+      <div className="pb-2 border-b border-gray-100">
+        <h2 className="text-lg font-semibold text-gray-900 tracking-tight">{title}</h2>
+        {subtitle && <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>}
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function CardField({
+  label,
+  value,
+  onChange,
+  active,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  active?: boolean;
+}) {
+  return (
+    <div className={`rounded-lg border bg-white p-3 ${active ? "ring-2 ring-indigo-500 border-indigo-300" : "border-gray-200"}`}>
+      <label className="block text-sm mb-1 text-gray-700">{label}</label>
+      <input
+        inputMode="numeric"
+        className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="0"
+      />
+    </div>
+  );
+}
+
+function SharesRemainingCallout({
+  stockClass,
+  classes,
+}: {
+  stockClass: string;
+  classes: EquityClass[];
+}) {
+  const cls = classes.find((c) => c.name === stockClass);
+  if (!cls || typeof cls.shares_remaining !== "number") return null;
+
+  const rem = cls.shares_remaining;
+  const tone =
+    rem > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700";
+  return (
+    <div className={`mt-4 rounded-lg border ${tone} p-3 text-sm`}>
+      {rem > 0 ? (
+        <>
+          <b>{rem.toLocaleString()}</b> share{rem === 1 ? "" : "s"} remaining in <b>{cls.name}</b>.
+        </>
+      ) : (
+        <>
+          No shares remaining in <b>{cls.name}</b>. Consider another class or reduce the grant size.
+        </>
+      )}
+    </div>
+  );
 }
 
 // ---------- Component ----------
@@ -330,8 +404,8 @@ export default function CreateGrant() {
   // loading shell
   if (loading)
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden p-6 text-center text-gray-700">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-6">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden p-6 text-center text-gray-700 max-w-screen-2xl mx-auto">
           Loading…
         </div>
       </div>
@@ -339,10 +413,10 @@ export default function CreateGrant() {
 
   // ---------- Render ----------
   return (
-    <div ref={topRef} className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
+    <div ref={topRef} className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-6">
       {/* floating success toast */}
       {success && (
-        <div className="fixed left-1/2 -translate-x-1/2 top-5 z-50 w-[min(90vw,48rem)]">
+        <div className="fixed left-1/2 -translate-x-1/2 top-5 z-50 w:[min(90vw,48rem)]">
           <div
             role="status"
             className="relative rounded-2xl border border-green-300 bg-green-50 text-green-900 shadow-2xl ring-1 ring-green-500/20 px-5 py-4 md:py-5 flex items-start gap-3"
@@ -365,424 +439,343 @@ export default function CreateGrant() {
 
       {/* page container */}
       <div className="w-full">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
-          <div className="px-8 py-6">
-            {/* header */}
-            <div className="mb-8 text-center">
-              <h1 className="text-3xl font-bold text-gray-900">Create Grant</h1>
-              <p className="text-sm text-gray-600">
-                Create a new employee grant following company standards
-              </p>
-            </div>
-
-            {/* inline error */}
-            {note && (
-              <div
-                role="alert"
-                className={`rounded-lg border p-3 text-sm mb-6 ${
-                  note.type === "ok"
-                    ? "border-green-200 bg-green-50 text-green-700"
-                    : "border-red-200 bg-red-50 text-red-700"
-                }`}
-              >
-                {note.text}
+        <div className="max-w-screen-2xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full ring-1 ring-black/5">
+            <div className="px-8 py-6">
+              {/* header */}
+              <div className="mb-6 text-center">
+                <h1 className="text-3xl font-bold text-gray-900">Issue New Employee Option</h1>
+                <p className="text-sm text-gray-500">
+                  Create a new stock option following company standards
+                </p>
               </div>
-            )}
 
-            {/* Main grid
-                - Summary FIRST in DOM so it never sinks on mobile
-                - On xl: two columns, items aligned at start so summary does not stretch
-            */}
-            <form
-              onSubmit={onSubmit}
-              className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6 xl:items-start"
-            >
-              {/* SUMMARY */}
-              <aside
-                className="bg-gray-50 rounded-lg border border-gray-200 p-6
-                           order-1 xl:order-none xl:col-start-2 xl:row-start-1
-                           xl:self-start xl:sticky xl:top-6"
-                aria-label="Summary"
-              >
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Summary</h3>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-gray-700">
-                  <div className="text-gray-500">Employee</div>
-                  <div className="tabular-nums text-right">{form.unique_id || "—"}</div>
-
-                  <div className="text-gray-500">Class</div>
-                  <div className="text-right">{form.stock_class || "—"}</div>
-
-                  <div className="text-gray-500">Type</div>
-                  <div className="text-right">{activeBucket || "—"}</div>
-
-                  <div className="text-gray-500">Total Shares</div>
-                  <div className="tabular-nums text-right">{form.num_shares || "0"}</div>
-
-                  <div className="text-gray-500">Issue Date</div>
-                  <div className="tabular-nums text-right">{form.grant_date}</div>
-
-                  <div className="text-gray-500">Start Date</div>
-                  <div className="tabular-nums text-right">{form.vesting_start || "—"}</div>
-
-                  <div className="text-gray-500">End Date</div>
-                  <div className="tabular-nums text-right">{form.vesting_end || "—"}</div>
-
-                  <div className="text-gray-500">Cliff Months</div>
-                  <div className="tabular-nums text-right">{form.cliff_months}</div>
+              {/* inline error */}
+              {note && (
+                <div
+                  role="alert"
+                  className={`rounded-lg border p-3 text-sm mb-6 ${
+                    note.type === "ok"
+                      ? "border-green-200 bg-green-50 text-green-700"
+                      : "border-red-200 bg-red-50 text-red-700"
+                  }`}
+                >
+                  {note.text}
                 </div>
+              )}
 
-                {form.stock_class && (
-                  <SharesRemainingCallout stockClass={form.stock_class} classes={classes} />
-                )}
-              </aside>
+              {/* Main grid */}
+              <form
+                onSubmit={onSubmit}
+                className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-6 xl:items-start"
+              >
+                {/* SUMMARY (right rail) */}
+                <aside
+                  className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm
+                             order-1 xl:order-none xl:col-start-2 xl:row-start-1
+                             xl:self-start xl:sticky xl:top-6"
+                  aria-label="Summary"
+                >
+                  <h3 className="text-lg font-medium text-gray-900 mb-3">Summary</h3>
 
-              {/* LEFT rail (form sections) */}
-              <div className="space-y-6 order-2 xl:order-none">
-                {/* 1) Basics */}
-                <section className="bg-gray-50 rounded-lg border border-gray-200 p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">1) Basics</h2>
+                  <div className="divide-y divide-gray-100 text-sm text-gray-700">
+                    {[
+                      ["Employee", form.unique_id || "—"],
+                      ["Class", form.stock_class || "—"],
+                      ["Type", activeBucket || "—"],
+                      ["Total Shares", form.num_shares || "0"],
+                      ["Issue Date", form.grant_date],
+                      ["Start Date", form.vesting_start || "—"],
+                      ["End Date", form.vesting_end || "—"],
+                      ["Cliff Months", form.cliff_months],
+                    ].map(([k, v]) => (
+                      <div key={k as string} className="flex items-center justify-between py-1.5">
+                        <div className="text-gray-500">{k}</div>
+                        <div className="tabular-nums text-right">{v as string}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {form.stock_class && (
+                    <SharesRemainingCallout stockClass={form.stock_class} classes={classes} />
+                  )}
+                </aside>
+
+                {/* LEFT rail (form sections) */}
+                <div className="space-y-6 order-2 xl:order-none">
+                  {/* 1) Basics */}
+                  <Section title="1) Basics">
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">Employee</label>
+                        <select
+                          className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={form.unique_id}
+                          aria-label="Employee"
+                          onChange={(e) => setField("unique_id", e.target.value)}
+                        >
+                          <option value="">
+                            {Array.isArray(employees) ? "Select…" : "No employees found"}
+                          </option>
+                          {Array.isArray(employees) &&
+                            employees.map((emp) => {
+                              const label =
+                                emp.name ||
+                                emp.user?.first_name ||
+                                emp.user?.username ||
+                                emp.unique_id;
+                              return (
+                                <option key={emp.unique_id} value={emp.unique_id}>
+                                  {label}: {emp.unique_id}
+                                </option>
+                              );
+                            })}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500/80">
+                          Uses the employee’s unique ID for assignment.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">Stock Class</label>
+                        <select
+                          className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={form.stock_class}
+                          aria-label="Stock Class"
+                          onChange={(e) => setField("stock_class", e.target.value)}
+                        >
+                          <option value="">Select…</option>
+                          {filteredClasses.map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name}
+                              {typeof c.shares_remaining === "number"
+                                ? ` — ${c.shares_remaining.toLocaleString()} remaining`
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500/80">
+                          Classes filtered to match the selected share type when applicable.
+                        </p>
+                      </div>
+                    </div>
+                  </Section>
+
+                  {/* 2) Share Type */}
+                  <Section title="2) Share Type" subtitle="Pick one type and set the amount.">
+                    <div className="grid md:grid-cols-3 xl:grid-cols-4 gap-3">
+                      <CardField
+                        label="ISO Options"
+                        value={form.iso_shares}
+                        onChange={(v) => setField("iso_shares", onlyDigits(v))}
+                        active={activeBucket === "ISO"}
+                      />
+                      <CardField
+                        label="NQO Options"
+                        value={form.nqo_shares}
+                        onChange={(v) => setField("nqo_shares", onlyDigits(v))}
+                        active={activeBucket === "NQO"}
+                      />
+                      <CardField
+                        label="RSUs"
+                        value={form.rsu_shares}
+                        onChange={(v) => setField("rsu_shares", onlyDigits(v))}
+                        active={activeBucket === "RSU"}
+                      />
+                      <CardField
+                        label="Common Stock"
+                        value={form.common_shares}
+                        onChange={(v) => setField("common_shares", onlyDigits(v))}
+                        active={activeBucket === "COMMON"}
+                      />
+                      <CardField
+                        label="Preferred Stock"
+                        value={form.preferred_shares}
+                        onChange={(v) => setField("preferred_shares", onlyDigits(v))}
+                        active={activeBucket === "PREFERRED"}
+                      />
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">Total Shares</label>
+                        <input
+                          className="w-full h-10 border rounded-lg px-3 py-2 bg-gray-50"
+                          value={form.num_shares}
+                          disabled
+                          aria-disabled
+                        />
+                      </div>
+                    </div>
+                  </Section>
+
+                  {/* 3) Pricing */}
+                  <Section
+                    title="3) Pricing"
+                    subtitle={
+                      <>
+                        Options use a <b>Strike Price</b>. Stock uses a <b>Purchase Price</b>.
+                      </>
+                    }
+                  >
+                    <div className="grid md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">
+                          Strike Price (ISO/NQO)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                          placeholder={needsStrike ? "0.00" : "—"}
+                          disabled={!needsStrike}
+                          aria-disabled={!needsStrike}
+                          value={form.strike_price}
+                          onChange={(e) => setField("strike_price", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">
+                          Purchase Price (Stock)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                          placeholder={needsPurchase ? "0.00" : "—"}
+                          disabled={!needsPurchase}
+                          aria-disabled={needsPurchase ? undefined : true}
+                          value={form.purchase_price}
+                          onChange={(e) => setField("purchase_price", e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </Section>
+
+                  {/* 4) Vesting (Frequency/Cliff first, then Dates) */}
+                  <Section
+                    title="4) Vesting"
+                    subtitle="Preferred vests immediately. Others unlock over time."
+                  >
+                    <div className="space-y-4">
+                      {/* Row 1: Frequency + Cliff */}
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">Frequency</label>
+                          <select
+                            className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                            value={form.vesting_frequency}
+                            onChange={(e) =>
+                              setField(
+                                "vesting_frequency",
+                                e.target.value as FormState["vesting_frequency"]
+                              )
+                            }
+                            disabled={preferredImmediate}
+                            aria-disabled={preferredImmediate}
+                          >
+                            <option value="DAILY">Daily</option>
+                            <option value="WEEKLY">Weekly</option>
+                            <option value="BIWEEKLY">Bi-weekly</option>
+                            <option value="MONTHLY">Monthly</option>
+                            <option value="YEARLY">Yearly</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">Cliff (months)</label>
+                          <input
+                            inputMode="numeric"
+                            className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                            value={form.cliff_months}
+                            onChange={(e) => setField("cliff_months", onlyDigits(e.target.value))}
+                            disabled={preferredImmediate}
+                            aria-disabled={preferredImmediate}
+                            placeholder="0"
+                          />
+                          <p className="mt-1 text-xs text-gray-500/80">
+                            Time between Issue Date and Start Date. Changes in Cliff Month or Start Date impact the other field.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Dates */}
+                      <div className="grid md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">Issue Date</label>
+                          <input
+                            type="date"
+                            className="w-full h-10 border rounded-lg px-3 py-2 bg-gray-100"
+                            value={form.grant_date}
+                            disabled
+                            aria-disabled
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">Start Date</label>
+                          <input
+                            type="date"
+                            className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                            value={form.vesting_start}
+                            onChange={(e) => setField("vesting_start", e.target.value)}
+                            disabled={preferredImmediate}
+                            aria-disabled={preferredImmediate}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">End Date</label>
+                          <input
+                            type="date"
+                            className="w-full h-10 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
+                            value={form.vesting_end}
+                            onChange={(e) => setField("vesting_end", e.target.value)}
+                            disabled={preferredImmediate}
+                            aria-disabled={preferredImmediate}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Section>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-3">
                     <button
                       type="button"
-                      onClick={loadOptions}
-                      className="border rounded-lg px-3 py-1 hover:bg-white"
+                      className="rounded-lg px-4 py-2 border border-gray-200 hover:bg-gray-50"
+                      onClick={() => {
+                        const t = todayStr();
+                        setForm({
+                          unique_id: "",
+                          stock_class: "",
+                          iso_shares: "",
+                          nqo_shares: "",
+                          rsu_shares: "",
+                          common_shares: "",
+                          preferred_shares: "",
+                          num_shares: "",
+                          strike_price: "",
+                          purchase_price: "",
+                          vesting_frequency: "MONTHLY",
+                          vesting_start: t,
+                          vesting_end: "",
+                          grant_date: t,
+                          cliff_months: "0",
+                        });
+                      }}
                     >
-                      Reload
+                      Reset
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!canSubmit || saving}
+                      className="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
+                    >
+                      {saving ? "Issuing…" : "Issue Grant"}
                     </button>
                   </div>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">Employee</label>
-                      <select
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        value={form.unique_id}
-                        aria-label="Employee"
-                        onChange={(e) => setField("unique_id", e.target.value)}
-                      >
-                        <option value="">
-                          {Array.isArray(employees) ? "Select…" : "No employees found"}
-                        </option>
-                        {Array.isArray(employees) &&
-                          employees.map((emp) => {
-                            const label =
-                              emp.name ||
-                              emp.user?.first_name ||
-                              emp.user?.username ||
-                              emp.unique_id;
-                            return (
-                              <option key={emp.unique_id} value={emp.unique_id}>
-                                {label}: {emp.unique_id}
-                              </option>
-                            );
-                          })}
-                      </select>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Uses the employee’s unique ID for assignment.
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">Stock Class</label>
-                      <select
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        value={form.stock_class}
-                        aria-label="Stock Class"
-                        onChange={(e) => setField("stock_class", e.target.value)}
-                      >
-                        <option value="">Select…</option>
-                        {filteredClasses.map((c) => (
-                          <option key={c.id} value={c.name}>
-                            {c.name}
-                            {typeof c.shares_remaining === "number"
-                              ? ` — ${c.shares_remaining.toLocaleString()} remaining`
-                              : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Classes filtered to match the selected share type when applicable.
-                      </p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* 2) Share Type */}
-                <section className="bg-gray-50 rounded-lg border border-gray-200 p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">2) Share Type</h2>
-                    <span className="text-xs text-gray-500">
-                      Pick one type and set the amount.
-                    </span>
-                  </div>
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <CardField
-                      label="ISO Options"
-                      value={form.iso_shares}
-                      onChange={(v) => setField("iso_shares", onlyDigits(v))}
-                      active={activeBucket === "ISO"}
-                    />
-                    <CardField
-                      label="NQO Options"
-                      value={form.nqo_shares}
-                      onChange={(v) => setField("nqo_shares", onlyDigits(v))}
-                      active={activeBucket === "NQO"}
-                    />
-                    <CardField
-                      label="RSUs"
-                      value={form.rsu_shares}
-                      onChange={(v) => setField("rsu_shares", onlyDigits(v))}
-                      active={activeBucket === "RSU"}
-                    />
-                    <CardField
-                      label="Common Stock"
-                      value={form.common_shares}
-                      onChange={(v) => setField("common_shares", onlyDigits(v))}
-                      active={activeBucket === "COMMON"}
-                    />
-                    <CardField
-                      label="Preferred Stock"
-                      value={form.preferred_shares}
-                      onChange={(v) => setField("preferred_shares", onlyDigits(v))}
-                      active={activeBucket === "PREFERRED"}
-                    />
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">Total Shares</label>
-                      <input
-                        className="w-full border rounded-lg px-3 py-2 bg-white"
-                        value={form.num_shares}
-                        disabled
-                        aria-disabled
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                {/* 3) Pricing */}
-                <section className="bg-gray-50 rounded-lg border border-gray-200 p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">3) Pricing</h2>
-                    <span className="text-xs text-gray-500">
-                      Options use a <b>Strike Price</b>. Stock uses a <b>Purchase Price</b>.
-                    </span>
-                  </div>
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">
-                        Strike Price (ISO/NQO)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
-                        placeholder={needsStrike ? "0.00" : "—"}
-                        disabled={!needsStrike}
-                        aria-disabled={!needsStrike}
-                        value={form.strike_price}
-                        onChange={(e) => setField("strike_price", e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">
-                        Purchase Price (Stock)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
-                        placeholder={needsPurchase ? "0.00" : "—"}
-                        disabled={!needsPurchase}
-                        aria-disabled={!needsPurchase}
-                        value={form.purchase_price}
-                        onChange={(e) => setField("purchase_price", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                {/* 4) Vesting */}
-                <section className="bg-gray-50 rounded-lg border border-gray-200 p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">4) Vesting</h2>
-                    <span className="text-xs text-gray-500">
-                      Preferred vests immediately. Others unlock over time.
-                    </span>
-                  </div>
-
-                  <div className="grid md:grid-cols-5 gap-4">
-                    {/* Frequency */}
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">Frequency</label>
-                      <select
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
-                        value={form.vesting_frequency}
-                        onChange={(e) =>
-                          setField(
-                            "vesting_frequency",
-                            e.target.value as FormState["vesting_frequency"]
-                          )
-                        }
-                        disabled={preferredImmediate}
-                        aria-disabled={preferredImmediate}
-                      >
-                        <option value="DAILY">Daily</option>
-                        <option value="WEEKLY">Weekly</option>
-                        <option value="BIWEEKLY">Bi-weekly</option>
-                        <option value="MONTHLY">Monthly</option>
-                        <option value="YEARLY">Yearly</option>
-                      </select>
-                    </div>
-
-                    {/* Issue Date (read-only) */}
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">Issue Date</label>
-                      <input
-                        type="date"
-                        className="w-full border rounded-lg px-3 py-2 bg-gray-100"
-                        value={form.grant_date}
-                        disabled
-                        aria-disabled
-                      />
-                    </div>
-
-                    {/* Start Date */}
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">Start Date</label>
-                      <input
-                        type="date"
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
-                        value={form.vesting_start}
-                        onChange={(e) => setField("vesting_start", e.target.value)}
-                        disabled={preferredImmediate}
-                        aria-disabled={preferredImmediate}
-                      />
-                    </div>
-
-                    {/* End Date */}
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">End Date</label>
-                      <input
-                        type="date"
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
-                        value={form.vesting_end}
-                        onChange={(e) => setField("vesting_end", e.target.value)}
-                        disabled={preferredImmediate}
-                        aria-disabled={preferredImmediate}
-                      />
-                    </div>
-
-                    {/* Cliff Months */}
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">Cliff (months)</label>
-                      <input
-                        inputMode="numeric"
-                        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100"
-                        value={form.cliff_months}
-                        onChange={(e) => setField("cliff_months", onlyDigits(e.target.value))}
-                        disabled={preferredImmediate}
-                        aria-disabled={preferredImmediate}
-                        placeholder="0"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">
-                        Changing this moves Start Date = Issue Date + months.
-                      </p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Actions */}
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="submit"
-                    disabled={!canSubmit || saving}
-                    className={`px-4 py-2 rounded-lg text-white transition ${
-                      canSubmit && !saving
-                        ? "bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        : "bg-gray-400 cursor-not-allowed"
-                    }`}
-                  >
-                    {saving ? "Saving…" : "Create Grant"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const t = todayStr();
-                      setForm({
-                        unique_id: "",
-                        stock_class: "",
-                        iso_shares: "",
-                        nqo_shares: "",
-                        rsu_shares: "",
-                        common_shares: "",
-                        preferred_shares: "",
-                        num_shares: "",
-                        strike_price: "",
-                        purchase_price: "",
-                        vesting_frequency: "MONTHLY",
-                        vesting_start: t,
-                        vesting_end: "",
-                        grant_date: t,
-                        cliff_months: "0",
-                      });
-                      topRef.current?.scrollIntoView({ behavior: "smooth" });
-                    }}
-                    className="px-4 py-2 rounded-lg border hover:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    Reset
-                  </button>
                 </div>
-              </div>
-              {/* /left rail */}
-            </form>
-            {/* /grid */}
+              </form>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------- Presentational bits ----------
-function CardField(props: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  active?: boolean | null;
-}) {
-  const { label, value, onChange, active } = props;
-  return (
-    <div
-      className={`rounded-lg border p-3 transition ${
-        active ? "border-indigo-400 bg-indigo-50/40" : "border-white bg-white"
-      }`}
-    >
-      <label className="block text-sm mb-1 text-gray-700">{label}</label>
-      <input
-        className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        inputMode="numeric"
-        placeholder="0"
-      />
-    </div>
-  );
-}
-
-function SharesRemainingCallout({
-  stockClass,
-  classes,
-}: {
-  stockClass: string;
-  classes: EquityClass[];
-}) {
-  const cls = classes.find((c) => c.name === stockClass);
-  if (!cls || typeof cls.shares_remaining !== "number") return null;
-  return (
-    <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
-      <div className="text-sm">
-        <strong className="font-semibold">Heads up:</strong>{" "}
-        {cls.shares_remaining.toLocaleString()} shares remaining in{" "}
-        <span className="font-medium">{cls.name}</span>.
       </div>
     </div>
   );

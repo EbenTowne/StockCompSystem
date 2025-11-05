@@ -202,7 +202,7 @@ export default function ManageGrantDetail() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
       <div className="w-full">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full ring-1 ring-black/5">
           <div className="px-8 py-6">
             {/* Header: Employee + actions */}
             <div className="flex items-center justify-between mb-6">
@@ -234,7 +234,7 @@ export default function ManageGrantDetail() {
                 {!editing ? (
                   <button
                     onClick={() => setEditing(true)}
-                    className="rounded-lg px-3 py-1.5 text-white bg-blue-600 hover:bg-blue-700"
+                    className="rounded-lg px-3 py-1.5 text-white bg-indigo-600 hover:bg-indigo-700"
                   >
                     Edit
                   </button>
@@ -503,7 +503,7 @@ function StatusBadge({ value }: { value?: string }) {
     text === "Immediate Vesting"
       ? "text-green-700 bg-green-50 border-green-200"
       : text === "Fully Vested"
-      ? "text-blue-700 bg-blue-50 border-blue-200"
+      ? "text-blue-700 bg-blue-50 border-indigo-200"
       : text === "Not Vested"
       ? "text-gray-700 bg-gray-50 border-gray-200"
       : "text-gray-800 bg-gray-50 border-gray-200";
@@ -516,7 +516,7 @@ function TypeBadge({ value }: { value: string }) {
     value === "PREFERRED"
       ? "text-purple-700 bg-purple-50 border-purple-200"
       : value === "COMMON"
-      ? "text-blue-700 bg-blue-50 border-blue-200"
+      ? "text-blue-700 bg-blue-50 border-indigo-200"
       : value === "ISO" || value === "NQO"
       ? "text-amber-700 bg-amber-50 border-amber-200"
       : value === "RSU"
