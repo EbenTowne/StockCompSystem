@@ -14,7 +14,7 @@ type GrantListItem = {
   rsu_shares: number;
   common_shares: number;
   preferred_shares: number;
-  vesting_status?: string;
+  vesting_status?: string; // may include words and/or a percent like "Vesting 83%"
   strike_price: string | null;
   purchase_price: string | null;
 };
@@ -74,6 +74,94 @@ export default function ManageGrants() {
   }, [urlId]);
 
   const hasQuery = useMemo(() => Boolean((uniqueId || urlId).trim()), [uniqueId, urlId]);
+
+  // ---------- Priority sorting to mirror Employee Dashboard ----------
+  // Helpers
+  const toNumber = (v: string | number | null | undefined): number => {
+    if (v == null || v === "") return 0;
+    const n = typeof v === "string" ? Number(v) : v;
+    return Number.isFinite(n) ? (n as number) : 0;
+  };
+
+  const pricePerShare = (g: GrantListItem): number => {
+    // For RSUs use company FMV; for options prefer strike, then purchase, else FMV fallback
+    const fmv = toNumber(companyFMV);
+    if (g.rsu_shares > 0) return fmv;
+    const strike = toNumber(g.strike_price);
+    const purchase = toNumber(g.purchase_price);
+    return strike || purchase || fmv;
+  };
+
+  const estimatedValue = (g: GrantListItem): number => {
+    // Proxy for "vested value" since we don't have vested_shares here
+    return toNumber(g.num_shares) * pricePerShare(g);
+  };
+
+  const pctFromStatus = (status?: string): number => {
+    if (!status) return 0;
+    const lower = status.toLowerCase();
+    if (lower.includes("fully vested")) return 1;
+    // Try to extract a number followed by %
+    const m = status.match(/(\d{1,3})\s*%/);
+    if (m) {
+      const p = Math.max(0, Math.min(100, Number(m[1])));
+      return p / 100;
+    }
+    // "Immediate Vesting" should count as fully vested
+    if (lower.includes("immediate")) return 1;
+    if (lower.includes("not vested")) return 0;
+    // Unknown -> treat as 0 progress (conservative)
+    return 0;
+  };
+
+  const typeOf = (g: GrantListItem): string => {
+    if (g.preferred_shares > 0) return "PREFERRED";
+    if (g.common_shares > 0) return "COMMON";
+    if (g.rsu_shares > 0) return "RSU";
+    if (g.iso_shares > 0) return "ISO";
+    if (g.nqo_shares > 0) return "NQO";
+    return "—";
+  };
+
+  const sorted = useMemo(() => {
+    if (!items?.length) return [];
+
+    // High vs Low split by median of estimated values
+    const vals = items.map(estimatedValue).sort((a, b) => a - b);
+    const mid = Math.floor(vals.length / 2);
+    const median = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+
+    const CLOSE = 0.8; // close to fully vesting
+
+    const priority = (g: GrantListItem) => {
+      const pct = pctFromStatus(g.vesting_status);
+      const fully = pct >= 1;
+      const high = estimatedValue(g) >= median;
+      const close = pct >= CLOSE && pct < 1;
+
+      if (fully) return 5;         // fully vested last
+      if (high && close) return 1; // 1) high value & close to full
+      if (high) return 2;          // 2) high value (any progress)
+      if (!high && close) return 3;// 3) low value & close to full
+      return 4;                    // 4) low value & not close
+    };
+
+    const ts = (g: GrantListItem) => 0; // no date info here; keep stable order within tie-breakers
+
+    return [...items].sort((a, b) => {
+      const pa = priority(a), pb = priority(b);
+      if (pa !== pb) return pa - pb;
+
+      const va = estimatedValue(a), vb = estimatedValue(b);
+      if (va !== vb) return vb - va;
+
+      const pca = pctFromStatus(a.vesting_status), pcb = pctFromStatus(b.vesting_status);
+      if (pca !== pcb) return pcb - pca;
+
+      return ts(b) - ts(a);
+    });
+  }, [items, companyFMV]);
+  // -------------------------------------------------------------------
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
@@ -137,20 +225,8 @@ export default function ManageGrants() {
               </div>
             ) : (
               <div className="mt-6 md:mt-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {items.map((g) => {
-                  const type =
-                    g.preferred_shares > 0
-                      ? "PREFERRED"
-                      : g.common_shares > 0
-                      ? "COMMON"
-                      : g.rsu_shares > 0
-                      ? "RSU"
-                      : g.iso_shares > 0
-                      ? "ISO"
-                      : g.nqo_shares > 0
-                      ? "NQO"
-                      : "—";
-
+                {sorted.map((g) => {
+                  const type = typeOf(g);
                   const rawPrice =
                     g.rsu_shares > 0 ? companyFMV : g.strike_price ?? g.purchase_price ?? null;
                   const price = rawPrice != null ? formatMoney(rawPrice) : null;

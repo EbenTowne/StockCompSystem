@@ -41,15 +41,20 @@ const authHeaders = () => {
 export const forgotPassword = (email: string) =>
   axios.post(`${API_BASE}/auth/forgot-password/`, { email });
 
+/**
+ * Reset password
+ * Backend expects: POST /auth/reset-password/
+ * Body: { uidb64, token, new_password }
+ */
 export const resetPassword = (
-  uid: string,
+  uidb64: string,
   token: string,
-  new_password: string,
-  re_new_password: string
+  new_password: string
 ) =>
-  axios.post(`${API_BASE}/auth/reset-password/${uid}/${token}/`, {
+  axios.post(`${API_BASE}/auth/reset-password/`, {
+    uidb64,
+    token,
     new_password,
-    re_new_password,
   });
 
 /* ----------------------------------------------------------------------------

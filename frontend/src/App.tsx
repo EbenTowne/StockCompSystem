@@ -1,7 +1,7 @@
 // src/App.tsx
 import React from 'react';
-import Header from './components/Header';
 import AppRoutes from './routes/AppRoutes';
+import ChatWidget from './components/ChatWidget';
 
 export default function App() {
   return (
@@ -9,6 +9,7 @@ export default function App() {
       <main className="container mx-auto p-4">
         <AppRoutes />
       </main>
+      <ChatWidget />  {/* <= outside main so its fixed/z-index never get clipped */}
     </div>
   );
 }

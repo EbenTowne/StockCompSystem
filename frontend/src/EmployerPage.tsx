@@ -1,6 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import { registerEmployer } from "./auth";
+
+// Match CompanyMetrics.tsx: read VITE_API_URL and set Axios base
+const API = import.meta.env.VITE_API_URL as string; // e.g., "http://localhost:8000/api"
+if (API) {
+  axios.defaults.baseURL = API;
+}
 
 export default function RegisterEmployerPage() {
   const nav = useNavigate();
@@ -39,6 +46,8 @@ export default function RegisterEmployerPage() {
           message = Array.isArray(data.username) ? data.username.join(" ") : String(data.username);
         } else if (data.email) {
           message = Array.isArray(data.email) ? data.email.join(" ") : String(data.email);
+        } else if (data.detail) {
+          message = String(data.detail);
         }
       }
       setErr(message);
@@ -180,6 +189,7 @@ export default function RegisterEmployerPage() {
               <p className="text-sm text-gray-600">
                 Already have an account?{" "}
                 <button
+                  type="button"
                   onClick={() => nav("/login")}
                   className="text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
                 >

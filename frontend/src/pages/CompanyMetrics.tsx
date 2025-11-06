@@ -918,7 +918,9 @@ export default function CompanyMetrics() {
                           <div className="col-span-6 sm:col-span-2 flex sm:justify-end">
                             <button
                               type="button"
-                              className="w-full sm:w-auto rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                              className="w-full sm:w-auto rounded-lg px-3 py-2 border border-gray-200 bg-white text-gray-700
+             hover:bg-red-50 hover:border-red-200 hover:text-red-700
+             focus:outline-none focus:ring-2 focus:ring-red-400"
                               onClick={() => {
                                 const linked = classes.filter((c) => c.series?.id === Number(s.id)).length;
                                 const ok = confirm(
@@ -1017,7 +1019,9 @@ export default function CompanyMetrics() {
                             <div className="col-span-12 sm:col-span-12 flex sm:justify-end">
                               <button
                                 type="button"
-                                className="w-full sm:w-auto rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                className="w-full sm:w-auto rounded-lg px-3 py-2 border border-gray-200 bg-white text-gray-700
+             hover:bg-red-50 hover:border-red-200 hover:text-red-700
+             focus:outline-none focus:ring-2 focus:ring-red-400"
                                 onClick={() => {
                                   if (confirm(`Delete class "${c.name}"?`)) deleteClass(c.id);
                                 }}
@@ -1126,7 +1130,9 @@ export default function CompanyMetrics() {
 
                             <button
                               type="button"
-                              className="w-1/2 rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                              className="w-1/2 rounded-lg px-3 py-2 border border-gray-200 bg-white text-gray-700
+             hover:bg-red-50 hover:border-red-200 hover:text-red-700
+             focus:outline-none focus:ring-2 focus:ring-red-400"
                               onClick={() => removeFinancialRow(i)}
                               title="Remove this year"
                             >

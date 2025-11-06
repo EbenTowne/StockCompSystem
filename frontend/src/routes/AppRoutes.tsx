@@ -31,7 +31,8 @@ export default function AppRoutes() {
       {/* public */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgetPasswordPage />} />
-      <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
+      {/* FIX: param name must be uidb64 to match ResetPasswordPage */}
+      <Route path="/reset-password/:uidb64/:token" element={<ResetPasswordPage />} />
       <Route path="/register-employer" element={<RegisterEmployerPage />} />
 
       {/* public employee registration (from email link) */}
@@ -49,9 +50,7 @@ export default function AppRoutes() {
         <Route index element={<Navigate to="company-metrics" replace />} />
         <Route path="create-grant" element={<CreateGrant />} />
 
-        {/* Unified Manage Grants:
-            - /dashboard/grants            -> combined search + list (uses ?id= query)
-            - /dashboard/grants/:uniqueId  -> detail below still uses path params */}
+        {/* Unified Manage Grants */}
         <Route path="grants" element={<ManageGrants />} />
         <Route path="grants/:uniqueId/:grantId" element={<ManageGrantDetail />} />
 

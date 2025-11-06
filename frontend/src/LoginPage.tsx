@@ -75,18 +75,25 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center py-16 px-6 lg:px-8">
-      {/* Wider responsive container so it fits large screens better */}
-      <div className="w-full max-w-xl lg:max-w-2xl">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 md:py-10 px-6 lg:px-10">
+      {/* Centered horizontally (mx-auto), kept higher vertically with modest top padding */}
+      <div className="w-full max-w-xl mx-auto mt-6 md:mt-10">
         <h1 className="sr-only">Endless Moments Stock Comp</h1>
 
         <div className="bg-white rounded-2xl shadow-lg ring-1 ring-black/5 overflow-hidden">
-          <div className="px-10 py-8">
-            <h2 className="text-center text-3xl font-semibold text-gray-900">Sign in</h2>
+          {/* Header block — now centered */}
+          <div className="px-8 pt-6 pb-4 text-center">
+            <h2 className="text-3xl font-semibold text-gray-900">Sign in</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Access your employer or employee dashboard
+            </p>
           </div>
+
+          {/* Accent divider */}
           <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-400" />
 
-          <form onSubmit={handleSubmit} className="px-10 py-8 space-y-6">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="px-8 py-6 space-y-6">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700">
                 Username
