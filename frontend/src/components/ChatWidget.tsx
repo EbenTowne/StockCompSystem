@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 
 type Msg = { id: string; role: "user" | "assistant" | "system"; content: string };
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
-const CHAT_URL = `${API_BASE}/ai/employer-query/`;
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
+const CHAT_URL = `${API_BASE}/api/ai/employer-query/`;
 
 function getToken(): string | null {
   return (
@@ -14,17 +14,24 @@ function getToken(): string | null {
   );
 }
 
+function getCsrfToken(): string | null {
+  const m = document.cookie.match(/(?:^|;)\s*csrftoken=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 async function callChatEndpoint(message: string, history: Msg[]): Promise<string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const t = getToken();
   if (t) headers.Authorization = `Bearer ${t}`;
+  const csrf = getCsrfToken();
+  if (csrf) headers["X-CSRFToken"] = csrf;
 
   const res = await fetch(CHAT_URL, {
     method: "POST",
     headers,
     credentials: "include",
     body: JSON.stringify({
-      message,
+      query: message,
       history: history.map(({ role, content }) => ({ role, content })),
     }),
   });
