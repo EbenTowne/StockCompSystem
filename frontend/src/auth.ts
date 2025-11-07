@@ -5,8 +5,7 @@ import axios from "axios";
  * API base (your JWT/REST endpoints, includes /api)
  * Ex: http://127.0.0.1:8000/api
  */
-export const API_BASE =
-  import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
+export const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
 /**
  * Backend base **without** /api — used for Django's server-rendered pages

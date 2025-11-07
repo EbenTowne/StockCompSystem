@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 type Msg = { id: string; role: "user" | "assistant" | "system"; content: string };
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
-const CHAT_URL = `${API_BASE}/api/ai/employer-query/`;
+const CHAT_URL = `${API_BASE}/ai/employer-query/`;
 
 function getToken(): string | null {
   return (

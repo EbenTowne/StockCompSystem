@@ -1,6 +1,7 @@
 import React from "react";
 import { Outlet } from "react-router-dom";
 import EmployerTaskbar from "./EmployerTaskbar";
+import ChatWidget from "./ChatWidget"; // ← added
 
 /**
  * Full-bleed layout:
@@ -33,6 +34,9 @@ export default function EmployerLayout() {
           </div>
         </main>
       </div>
+
+      {/* Mount once so it overlays every page and listens for taskbar toggle */}
+      <ChatWidget /> {/* ← added */}
     </div>
   );
 }

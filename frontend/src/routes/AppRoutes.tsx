@@ -10,10 +10,8 @@ import EmployeeDashboardPage from '../pages/EmployeeDashboardPage'
 
 // employer pages
 import EmployerLayout from "../components/EmployerLayout"
-import DashboardPage from "../pages/DashboardPage"
 import CreateGrant from "../pages/CreateGrant"
 import CapTable from "../pages/CapTable"
-import AIChatbot from "../pages/AIChatbot"
 import Expenses from "../pages/Expenses"
 import CompanyMetrics from "../pages/CompanyMetrics"
 import ViewEmployees from "../pages/ViewEmployees"
@@ -55,7 +53,6 @@ export default function AppRoutes() {
         <Route path="grants/:uniqueId/:grantId" element={<ManageGrantDetail />} />
 
         <Route path="cap-table" element={<CapTable />} />
-        <Route path="ai-chatbot" element={<AIChatbot />} />
         <Route path="expenses" element={<Expenses />} />
         <Route path="company-metrics" element={<CompanyMetrics />} />
         <Route path="view-employees" element={<ViewEmployees />} />
