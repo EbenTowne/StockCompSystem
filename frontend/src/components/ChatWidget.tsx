@@ -119,28 +119,34 @@ export default function ChatWidget() {
     setMessages((m) => m.slice(0, 1));
   }
 
-  // NOTE: bottom-right so it’s definitely visible; once verified you can move it next to the rail.
+  // Anchored bottom-right of the viewport
   return (
     <>
       {/* Launcher */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-4 right-4 z-50 rounded-full shadow-lg px-4 py-3 bg-indigo-600 text-white hover:bg-indigo-700"
+        className="fixed bottom-4 left-3 z-50 rounded-full shadow-lg px-4 py-3 bg-indigo-600 text-white hover:bg-indigo-700"
         aria-label={open ? "Close chat" : "Open chat"}
       >
-        {open ? "Close" : "Chat"}
+        {open ? "Close" : "Chat with an AI Assistant"}
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-4 z-50 w-96 max-w-[95vw] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="fixed bottom-24 left-4 z-50 w-96 max-w-[95vw] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <div className="font-semibold">AI Assistant</div>
             <div className="flex gap-2">
-              <button onClick={clearChat} className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700">
+              <button
+                onClick={clearChat}
+                className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700"
+              >
                 Clear
               </button>
-              <button onClick={() => setOpen(false)} className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700">
+              <button
+                onClick={() => setOpen(false)}
+                className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700"
+              >
                 ✕
               </button>
             </div>
@@ -167,7 +173,10 @@ export default function ChatWidget() {
             )}
           </div>
 
-          <form onSubmit={send} className="border-t border-gray-200 dark:border-gray-700 p-2 flex gap-2">
+          <form
+            onSubmit={send}
+            className="border-t border-gray-200 dark:border-gray-700 p-2 flex gap-2"
+          >
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}

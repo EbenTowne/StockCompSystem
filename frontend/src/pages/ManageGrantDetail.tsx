@@ -32,13 +32,12 @@ type Detail = {
   strike_price: string | null;
   purchase_price: string | null;
 
-  vesting_start: string | null;
-  vesting_end: string | null;
+  vesting_start: string | null; // YYYY-MM-DD
+  vesting_end: string | null;   // YYYY-MM-DD
   vesting_frequency: "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "YEARLY";
 
   vesting_status?: string;
 
-  // helpers from API
   cliff_months?: number;
   shares_per_period?: number;
 };
@@ -50,14 +49,14 @@ type CompanyResp = {
 };
 
 type SchedulePoint = {
-  date: string; // 'YYYY-MM-DD'
+  date: string;
   iso?: number;
   nqo?: number;
   rsu?: number;
   common?: number;
   preferred?: number;
-  total_vested?: number;       // shares vested this period
-  cumulative_vested?: number;  // optional; we compute if missing
+  total_vested?: number;
+  cumulative_vested?: number;
 };
 
 type Employee = {
@@ -82,7 +81,8 @@ export default function ManageGrantDetail() {
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  const [editing, setEditing] = useState(false);
+  // editing state kept to minimize diff, but never enabled
+  const [editing] = useState(false);
   const [draft, setDraft] = useState<Partial<Detail>>({});
 
   useEffect(() => {
@@ -145,41 +145,15 @@ export default function ManageGrantDetail() {
     }
   }
 
-  async function onSave() {
-    setLoading(true);
-    setNote(null);
-    try {
-      const payload = {
-        strike_price: draft.strike_price,
-        purchase_price: draft.purchase_price,
-        vesting_start: draft.vesting_start,
-        vesting_end: draft.vesting_end,
-        vesting_frequency: draft.vesting_frequency,
-      };
-      await axios.patch(
-        `${API}/equity/employees/${encodeURIComponent(uniqueId)}/grants/${grantId}/`,
-        payload
-      );
-      setNote({ type: "ok", text: "Saved." });
-      setEditing(false);
-
-      const res = await axios.get(
-        `${API}/equity/employees/${encodeURIComponent(uniqueId)}/grants/${grantId}/`
-      );
-      setData(res.data);
-      setDraft(res.data);
-    } catch (e: any) {
-      setNote({ type: "err", text: apiErr(e) });
-    } finally {
-      setLoading(false);
-    }
-  }
+  // onSave retained (unused) to keep diff small
+  async function onSave() {}
 
   /* ---------- Derived ---------- */
   const type = useMemo(
     (): "ISO" | "NQO" | "RSU" | "COMMON" | "PREFERRED" | "—" => getType(data),
     [data]
   );
+
   const needsStrike = type === "ISO" || type === "NQO";
   const needsPurchase = type === "COMMON" || type === "PREFERRED";
   const isRSU = type === "RSU";
@@ -210,18 +184,16 @@ export default function ManageGrantDetail() {
     return `${pct.toFixed(2)}%`;
   }, [company, data?.num_shares]);
 
-  /* ---------- Build chart from API schedule with frequency-aware X axis ---------- */
+  /* ---------- Chart data ---------- */
   type ChartPoint = { key: string; date: string; cumulative: number };
 
   const chartData: ChartPoint[] = useMemo(() => {
     if (!schedule || schedule.length === 0) return [];
     const freq = (data?.vesting_frequency || "MONTHLY").toUpperCase();
 
-    // Sort schedule by date, compute cumulative if not provided
     const sorted = [...schedule].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     let running = 0;
 
-    // For MONTHLY/YEARLY we group; for DAILY/WEEKLY/BIWEEKLY we keep each entry.
     const groupLast = new Map<string, ChartPoint>();
 
     const makeKey = (isoDate: string): string => {
@@ -231,12 +203,8 @@ export default function ManageGrantDetail() {
       const day = d.getUTCDate().toString().padStart(2, "0");
 
       if (freq === "DAILY") return `${y}-${m}-${day}`;
-      if (freq === "WEEKLY" || freq === "BIWEEKLY") {
-        // Use actual event date as the period key
-        return `${y}-${m}-${day}`;
-      }
+      if (freq === "WEEKLY" || freq === "BIWEEKLY") return `${y}-${m}-${day}`;
       if (freq === "YEARLY") return `${y}`;
-      // default monthly
       return `${y}-${m}`;
     };
 
@@ -256,20 +224,14 @@ export default function ManageGrantDetail() {
 
       const key = makeKey(p.date);
       const point: ChartPoint = { key, date: p.date, cumulative: cum };
-
-      if (freq === "MONTHLY" || freq === "YEARLY") {
-        // overwrite so we keep "last in group"
-        groupLast.set(key, point);
-      } else {
-        groupLast.set(`${key}-${p.date}`, point); // keep all occurrences for daily/weekly/biweekly
-      }
+      if (freq === "MONTHLY" || freq === "YEARLY") groupLast.set(key, point);
+      else groupLast.set(`${key}-${p.date}`, point);
     }
 
     let arr = Array.from(groupLast.values()).sort((a, b) =>
       a.date < b.date ? -1 : a.date > b.date ? 1 : 0
     );
 
-    // YEARLY: Expand over full start..end years and carry values forward
     if (freq === "YEARLY") {
       const startYear =
         (data?.vesting_start && new Date(data.vesting_start + "T00:00:00Z").getUTCFullYear()) ||
@@ -291,11 +253,7 @@ export default function ManageGrantDetail() {
         for (let y = startYear; y <= endYear; y++) {
           const ys = y.toString();
           if (yearToCum.has(ys)) last = yearToCum.get(ys)!;
-          expanded.push({
-            key: ys,
-            date: `${ys}-12-31`,
-            cumulative: last,
-          });
+          expanded.push({ key: ys, date: `${ys}-12-31`, cumulative: last });
         }
         arr = expanded;
       }
@@ -304,7 +262,6 @@ export default function ManageGrantDetail() {
     return arr;
   }, [schedule, data?.vesting_frequency, data?.vesting_start, data?.vesting_end]);
 
-  // Dynamic ticks so labels don’t crowd. Aim ~10 ticks.
   const xTicks = useMemo(() => {
     const n = chartData.length;
     if (n <= 12) return chartData.map((d) => d.key);
@@ -316,7 +273,6 @@ export default function ManageGrantDetail() {
   }, [chartData]);
 
   const xFormatter = (key: string) => {
-    // keys are YYYY, YYYY-MM or YYYY-MM-DD
     if (/^\d{4}$/.test(key)) return key;
     if (/^\d{4}-\d{2}$/.test(key)) {
       return new Date(`${key}-01T00:00:00Z`).toLocaleDateString(undefined, {
@@ -331,13 +287,13 @@ export default function ManageGrantDetail() {
     });
   };
 
-  /* ---------- UI (now inside a white block like ManageGrants) ---------- */
+  /* ---------- UI ---------- */
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-6">
       <div className="w-full">
         <div className="bg-white rounded-xl shadow-lg overflow-hidden w-full ring-1 ring-black/5">
           <div className="px-8 py-6">
-            {/* Header — simplified */}
+            {/* Header — Back/Delete only */}
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">
@@ -363,13 +319,6 @@ export default function ManageGrantDetail() {
                 <Button variant="danger" onClick={onDelete}>
                   Delete
                 </Button>
-                {!editing ? (
-                  <Button onClick={() => setEditing(true)}>Edit</Button>
-                ) : (
-                  <Button variant="success" onClick={onSave}>
-                    Save
-                  </Button>
-                )}
               </div>
             </div>
 
@@ -408,50 +357,64 @@ export default function ManageGrantDetail() {
                   </div>
                 </Card>
 
-                {/* Vesting */}
+                {/* Vesting — all three fields visually match as text-style inputs */}
                 <Card>
                   <SectionHeader title="Vesting" />
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <LabeledInput
                       id="vesting_start"
                       label="Vesting Start"
-                      type="date"
-                      disabled={!editing || isPreferred}
-                      value={draft.vesting_start ?? ""}
-                      onChange={(v) => setDraft((d) => ({ ...d, vesting_start: v }))}
+                      type="text"
+                      disabled={true}
+                      value={fmtDate(draft.vesting_start)}
+                      onChange={() => {}}
+                      placeholder="—"
                     />
                     <LabeledInput
                       id="vesting_end"
                       label="Vesting End"
-                      type="date"
-                      disabled={!editing || isPreferred}
-                      value={draft.vesting_end ?? ""}
-                      onChange={(v) => setDraft((d) => ({ ...d, vesting_end: v }))}
+                      type="text"
+                      disabled={true}
+                      value={fmtDate(draft.vesting_end)}
+                      onChange={() => {}}
+                      placeholder="—"
                     />
                     <div className="md:col-span-2 grid gap-4 md:grid-cols-3">
-                      <FormControl label="Vesting Frequency" htmlFor="vesting_frequency">
-                        <select
-                          id="vesting_frequency"
-                          className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-shadow focus:ring-4 focus:ring-indigo-100 disabled:opacity-60"
-                          disabled={!editing || isPreferred}
-                          value={draft.vesting_frequency ?? "MONTHLY"}
-                          onChange={(e) =>
-                            setDraft((d) => ({
-                              ...d,
-                              vesting_frequency: e.target.value as Detail["vesting_frequency"],
-                            }))
-                          }
-                        >
-                          <option value="DAILY">Daily</option>
-                          <option value="WEEKLY">Weekly</option>
-                          <option value="BIWEEKLY">Bi-weekly</option>
-                          <option value="MONTHLY">Monthly</option>
-                          <option value="YEARLY">Yearly</option>
-                        </select>
-                      </FormControl>
-
-                      <ReadOnlyBox label="Cliff Months" value={data.cliff_months ?? 0} />
-                      <ReadOnlyBox label="Shares / Period" value={data.shares_per_period ?? 0} />
+                      {/* Frequency */}
+                      <LabeledInput
+                        id="vesting_frequency_text"
+                        label="Vesting Frequency"
+                        type="text"
+                        disabled={true}
+                        value={prettyFreq(draft.vesting_frequency ?? "MONTHLY")}
+                        onChange={() => {}}
+                      />
+                      {/* Cliff Months — now same component/style as frequency */}
+                      <LabeledInput
+                        id="cliff_months_text"
+                        label="Cliff Months"
+                        type="text"
+                        disabled={true}
+                        value={
+                          Number.isFinite(Number(data.cliff_months))
+                            ? String(data.cliff_months)
+                            : ""
+                        }
+                        onChange={() => {}}
+                      />
+                      {/* Shares / Period — same component/style as frequency */}
+                      <LabeledInput
+                        id="shares_per_period_text"
+                        label="Shares / Period"
+                        type="text"
+                        disabled={true}
+                        value={
+                          Number.isFinite(Number(data.shares_per_period))
+                            ? String(data.shares_per_period)
+                            : ""
+                        }
+                        onChange={() => {}}
+                      />
                     </div>
                   </div>
                 </Card>
@@ -657,8 +620,9 @@ function LabeledInput({
         type={type}
         value={value}
         placeholder={placeholder}
+        readOnly
         disabled={disabled}
-        className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-shadow focus:ring-4 focus:ring-indigo-100 disabled:opacity-60"
+        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none ring-0 placeholder:text-gray-400 appearance-none [::-webkit-calendar-picker-indicator]:hidden [::-webkit-inner-spin-button]:hidden [appearance:textfield] disabled:opacity-60"
         onChange={(e) => onChange(e.target.value)}
       />
     </FormControl>
@@ -790,6 +754,22 @@ function toMoney(v?: string | number | null): string {
 function formatShares(n: number): string {
   if (!Number.isFinite(n)) return "";
   return Math.round(n).toLocaleString();
+}
+
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00Z");
+  if (isNaN(d.getTime())) return iso;
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  return `${mm}/${dd}/${yyyy}`;
+}
+
+function prettyFreq(f: Detail["vesting_frequency"] | string): string {
+  const up = String(f || "").toUpperCase();
+  if (up === "BIWEEKLY") return "Bi-weekly";
+  return up.charAt(0) + up.slice(1).toLowerCase();
 }
 
 async function fetchEmployeeName(uid: string): Promise<string | null> {

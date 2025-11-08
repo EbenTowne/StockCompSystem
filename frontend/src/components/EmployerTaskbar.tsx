@@ -31,22 +31,6 @@ export default function EmployerTaskbar() {
         <NavLink to="view-employees" className={({ isActive }) => (isActive ? active : base)}>
           Manage Employees
         </NavLink>
-
-        {/* --- AI Assistant toggle (opens/closes ChatWidget) --- */}
-        <button
-          type="button"
-          onClick={() => {
-            // Prefer global hook if ChatWidget exposed it; else fall back to event
-            (window as any).chatWidget?.toggle?.() ||
-              window.dispatchEvent(new Event("chat:toggle"));
-          }}
-          className={base}
-          title="Open AI Assistant"
-          aria-label="Open AI Assistant"
-          data-testid="open-ai-assistant"
-        >
-          AI Assistant
-        </button>
       </nav>
     </div>
   );
