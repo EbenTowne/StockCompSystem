@@ -1,27 +1,31 @@
-1) Development/Test Credentials
 
-Django Admin (local/dev)
-- Username: admin
-- Password: endlessmoments
+## 1) Development/Test Credentials
 
-SMTP Test Account (for outbound emails)
-- Email/Username: endlessmomentstestemail@gmail.com
-- Password: endlessmomentsllc
+### Django Admin (local/dev)
+- **Username:** `admin`  
+- **Password:** `endlessmoments`
 
-AWS RDS (PostgreSQL) – Test Login
-- Username: endlessmoments
-- Password: jay@manwani25
-- Host: <ask maintainer>
-- Port: 5432
-- DB Name: <ask maintainer>
+### SMTP Test Account (for outbound emails)
+- **Email/Username:** `endlessmomentstestemail@gmail.com`  
+- **Password:** `endlessmomentsllc`
 
-If you need the exact RDS host/DB name, ping a maintainer. Never paste hostnames in public issues.
-⸻
-2) Local Environment Templates
+### AWS RDS (PostgreSQL) – Test Login
+- **Username:** `endlessmoments`  
+- **Password:** `jay@manwani25`  
+- **Host:** `<ask maintainer>`  
+- **Port:** `5432`  
+- **DB Name:** `<ask maintainer>`
 
-Create these files and do not commit them.
+> If you need the exact RDS host/DB name, ping a maintainer. Never paste hostnames in public issues.
 
-backend/.env
+---
+
+## 2) Local Environment Templates
+
+Create these files and **do not commit** them.
+
+### `backend/.env`
+```
 DJANGO_SECRET_KEY=replace_me_for_local_dev
 DJANGO_DEBUG=true
 
@@ -41,74 +45,90 @@ EMAIL_PORT=587
 EMAIL_USE_TLS=true
 EMAIL_HOST_USER=endlessmomentstestemail@gmail.com
 EMAIL_HOST_PASSWORD=endlessmomentsllc
+```
 
-
-frontend/.env
+### `frontend/.env`
+```
 # Point to your local backend or remote dev API
 VITE_API_URL=http://127.0.0.1:8000
 # If using Next.js instead of Vite, use:
 # NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+```
 
-⸻
-3) Quickstart Commands
+---
 
-Backend
+## 3) Quickstart Commands
+
+### Backend
+```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate         # Windows: .venv\Scripts\activate
 pip install -r ../requirements.txt
 python manage.py migrate
 python manage.py runserver
-
+```
 
 Create a local superuser if needed:
+```bash
 python manage.py createsuperuser
+```
 
-
-Frontend
+### Frontend
+```bash
 cd frontend
 npm install
 npm run dev
+```
 
-⸻
-4) Operational Notes
+---
 
-- Email dispatch uses the test Gmail account above. For real environments, switch to a production SMTP or SES account and store secrets in a vault (AWS Secrets Manager, 1Password, etc.).
-- DB access to RDS may require your IP to be whitelisted in the security group.
-- CORS: ensure CORS_ALLOWED_ORIGINS includes the frontend dev URL you’re using.
-⸻
-5) Security & Hygiene
+## 4) Operational Notes
 
-- Never commit .env, PRIVATE.md, or secrets. Ensure .gitignore contains:
-- .env
-- **/.env
-- PRIVATE.md
+- **Email dispatch** uses the test Gmail account above. For real environments, switch to a production SMTP or SES account and store secrets in a vault (AWS Secrets Manager, 1Password, etc.).
+- **DB access** to RDS may require your IP to be whitelisted in the security group.
+- **CORS**: ensure `CORS_ALLOWED_ORIGINS` includes the frontend dev URL you’re using.
 
-- If any credential above leaks outside this repo (screenshots, chats, or public issues), rotate immediately:
-    1. Change password in source system (Gmail/RDS).
-    2. Update secrets in vault or .env.
-    3. Reboot affected services if needed.
-    4. Invalidate old tokens/keys.
+---
+
+## 5) Security & Hygiene
+
+- Never commit `.env`, `PRIVATE.md`, or secrets. Ensure `.gitignore` contains:
+  ```
+  .env
+  **/.env
+  PRIVATE.md
+  ```
+- If any credential above leaks outside this repo (screenshots, chats, or public issues), **rotate immediately**:
+  1. Change password in source system (Gmail/RDS).
+  2. Update secrets in vault or `.env`.
+  3. Reboot affected services if needed.
+  4. Invalidate old tokens/keys.
 
 - Prefer per-developer credentials or short-lived tokens in real environments.
-⸻
-6) Troubleshooting
 
-- django.core.exceptions.ImproperlyConfigured / secret key
+---
 
-- Check backend/.env for DJANGO_SECRET_KEY and DATABASE_URL.
+## 6) Troubleshooting
 
-- Email not sending
+- **`django.core.exceptions.ImproperlyConfigured` / secret key**  
+  Check `backend/.env` for `DJANGO_SECRET_KEY` and `DATABASE_URL`.
 
-- Confirm EMAIL_HOST_USER/EMAIL_HOST_PASSWORD and allow App Passwords if using Google with 2FA.
+- **Email not sending**  
+  Confirm `EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD` and allow App Passwords if using Google with 2FA.
 
-- CORS errors in browser
+- **CORS errors in browser**  
+  Add your frontend URL to `CORS_ALLOWED_ORIGINS`.
 
-- Add your frontend URL to CORS_ALLOWED_ORIGINS.
+- **DB connection denied**  
+  Verify RDS security group ingress for your IP and correct `DATABASE_URL`.
 
-- DB connection denied
+---
 
-- Verify RDS security group ingress for your IP and correct DATABASE_URL.
+## 7) Contacts
+- Maintainers: `<names / Slack handles>`
+- RDS Host/DB Name source: `<who to ask>`
+
 ⸻
 7) Contacts
 - Maintainers: <names / Slack handles>
