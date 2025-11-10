@@ -11,6 +11,7 @@ from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
+from django.utils.timezone import now
 from django.core.mail import send_mail
 from django.conf import settings
 
@@ -65,19 +66,26 @@ class EmployeeInviteView(generics.CreateAPIView):
 
         subject = f"You've been invited by {self.request.user.username}"
 
-        with open('accounts/templates/inviteEmail.html', 'r') as file:
-            htmlContent = file.read()
-
-        htmlContent = htmlContent.replace('{{ inviter }}', self.request.user.first_name or self.request.user.username)
-        htmlContent = htmlContent.replace('{{ company }}', invite.company.name)
-        htmlContent = htmlContent.replace('{{ link }}', link)
+        # Render HTML email using Django template loader instead of opening a file by path
+        # This avoids relying on the current working directory and respects TEMPLATE settings
+        template_name = 'inviteEmail.html'
+        context = {
+            'inviter': self.request.user.first_name or self.request.user.username,
+            'company': invite.company.name,
+            'link': link,
+        }
+        try:
+            htmlContent = render_to_string(template_name, context)
+        except Exception:
+            # Fallback: simple inline HTML if template lookup fails
+            htmlContent = f"<p>{context['inviter']} has invited you to join {context['company']}.</p><p>Register: <a href='{link}'>{link}</a></p>"
 
         textContent = f"You’ve been invited to join {invite.company.name} on Endless Moments.\nRegister here: {link}"
 
         email = EmailMultiAlternatives(
             subject = subject,
             body = textContent,
-            from_email = None,
+            from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None),
             to = [invite.email]
         )
         email.attach_alternative(htmlContent, "text/html")
