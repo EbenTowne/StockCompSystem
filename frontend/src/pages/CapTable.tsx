@@ -17,6 +17,31 @@ type CapTableResponse = {
   rows: CapRow[];
 };
 
+type CapRowForExport = CapRow & {
+  isos?: number;
+  nqos?: number;
+  rsus?: number;
+  common_shares?: number;
+  preferred_shares?: number;
+
+  strike_price?: number | null;
+  purchase_price?: number | null;
+  total_vesting_months?: number;
+  remaining_vesting_months?: number;
+  cliff_months?: number;
+  vesting_status?: string;
+  vesting_start?: string | null;
+  current_share_price?: number;
+  risk_free_rate?: number;
+  volatility?: number;
+
+  // from /equity/cap-table/bso/
+  bso_fmv?: number;
+};
+
+type CapApi = { rows: CapRowForExport[]; market_cap: number };
+type BsoApi = { rows: Partial<CapRowForExport>[] };
+
 // Donut chart slice type and colors (copied from CompanyMetrics)
 type Slice = { label: string; value: number; color: string };
 
@@ -143,6 +168,67 @@ export default function CapTable() {
     }
   }
 
+  async function exportExcel() {
+    try {
+      // dynamic import; tolerant to missing types
+      const XLSX = (await import(/* @vite-ignore */ "xlsx")) as any;
+
+      // Pull cap-table rows (rich fields) — no other endpoints needed
+      type CapRowForExport = CapRow & {
+        isos?: number;
+        nqos?: number;
+        rsus?: number;
+        common_shares?: number;
+        preferred_shares?: number;
+        strike_price?: number | null;
+        purchase_price?: number | null;          // used for "Exercise Price ($)"
+        total_vesting_months?: number;
+        cliff_months?: number;
+        vesting_status?: string;
+        vesting_start?: string | null;
+      };
+      type CapApi = { rows: CapRowForExport[]; market_cap: number };
+
+      const { data } = await axios.get<CapApi>(`${API}/equity/cap-table/`);
+      const capRows: CapRowForExport[] = data?.rows ?? [];
+
+      const nz = (n: any) => (typeof n === "number" ? n : 0);
+      const f2 = (n: any) => (typeof n === "number" ? Number(n.toFixed(2)) : null);
+
+      // === Employee Summary ONLY ===
+      const employeeSummary = capRows.map((r) => {
+        const vestYears = nz((r as any).total_vesting_months) / 12;
+
+        return {
+          "Name": r.name ?? "",
+          "Role": "",
+          "ISOs": nz((r as any).isos),
+          "NQOs": nz((r as any).nqos),
+          "RSUs": nz((r as any).rsus),
+          "Common Shares": nz((r as any).common_shares),
+          "Preferred Shares": nz((r as any).preferred_shares),
+          "Total Shares": nz(r.total_shares),
+          "Ownership %": f2(nz(r.ownership_pct)),
+          "Vesting Schedule": r.vesting_status ?? "N/A",
+          "Strike Price ($)": (r as any).strike_price ?? "N/A",
+          "Start Date": (r as any).vesting_start ?? "N/A",
+          "Vesting Period (years)": f2(vestYears),
+          "Cliff (months)": nz((r as any).cliff_months),
+          "Exercise Price ($)": (r as any).purchase_price ?? "N/A",
+        };
+      });
+      const wsSummary = XLSX.utils.json_to_sheet(employeeSummary);
+
+      // Build workbook with ONLY this sheet
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Employee Summary");
+      XLSX.writeFile(wb, "CapTable_Export.xlsx");
+    } catch (err: any) {
+      console.error(err);
+      alert(typeof err?.message === "string" ? err.message : "Export failed.");
+    }
+  }
+
   const merged = useMemo(() => {
     // sum duplicates by unique_id
     const map = new Map<string, { name: string; total_shares: number; ownership_pct: number }>();
@@ -195,11 +281,27 @@ export default function CapTable() {
                 <h1 className="text-3xl font-bold text-gray-900">Cap Table</h1>
                 <p className="text-sm text-gray-600">Ownership breakdown for the current company</p>
               </div>
-              <div className="shrink-0 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 border border-gray-200">
-                Authorized shares: <span className="font-semibold">{fmtInt(marketCap)}</span>
+              <div className="flex items-start">
+                <div className="rounded-xl border border-gray-200 bg-white/80 backdrop-blur px-4 py-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={exportExcel}
+                      className="inline-flex items-center rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3.5 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                      aria-label="Export cap table to Excel"
+                      title="Download a detailed cap table as Excel"
+                    >
+                      Export For Detailed Cap Table
+                    </button>
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <div className="inline-flex items-center rounded-md bg-gray-50 px-3 py-1.5 text-xs text-gray-700 border border-gray-200">
+                      <span className="mr-1.5 text-gray-500">Authorized shares</span>
+                      <span className="font-semibold tabular-nums">{fmtInt(marketCap)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            {/* Class filter selector */}
             <div className="mt-4 flex items-center gap-3">
               <label className="text-sm text-gray-600">Filter by class:</label>
               <select

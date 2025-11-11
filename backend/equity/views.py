@@ -734,3 +734,4 @@ class MyGrantDetailView(RetrieveAPIView):
 
     def get_queryset(self):
         return EquityGrant.objects.filter(user=self.request.user.profile)
+    

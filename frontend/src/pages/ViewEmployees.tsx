@@ -309,9 +309,6 @@ export default function ViewEmployees() {
                         Grants
                       </Th>
                       <Th align="right" className="whitespace-nowrap">
-                        Total Shares
-                      </Th>
-                      <Th align="right" className="whitespace-nowrap">
                         % Ownership
                       </Th>
                       {/* keep an empty header cell for action alignment */}
@@ -339,9 +336,6 @@ export default function ViewEmployees() {
                         </Td>
                         <Td align="right" className="px-1.5">
                           {fmtInt(e.grants_count)}
-                        </Td>
-                        <Td align="right" className="px-1.5">
-                          {fmtInt(e.total_shares)}
                         </Td>
                         <Td align="right" className="px-1.5">
                           {fmtPct(e.ownership_pct)}
