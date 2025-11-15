@@ -26,7 +26,7 @@ export default function EmployerTaskbar() {
           Cap Table
         </NavLink>
         <NavLink to="expenses" className={({ isActive }) => (isActive ? active : base)}>
-          Expenses
+          Stock Comp Expense
         </NavLink>
         <NavLink to="view-employees" className={({ isActive }) => (isActive ? active : base)}>
           Manage Employees
