@@ -201,7 +201,6 @@ export default function CapTable() {
 
   async function exportExcel() {
     try {
-      // dynamic import; tolerant to missing types
       const XLSX = (await import(/* @vite-ignore */ "xlsx")) as any;
 
       // Pull cap-table rows (rich fields) — no other endpoints needed
@@ -214,6 +213,7 @@ export default function CapTable() {
         strike_price?: number | null;
         purchase_price?: number | null; // used for "Exercise Price ($)"
         total_vesting_months?: number;
+        remaining_vesting_months?: number; // <-- ADD THIS
         cliff_months?: number;
         vesting_status?: string;
         vesting_start?: string | null;
@@ -230,6 +230,10 @@ export default function CapTable() {
       // === Employee Summary ONLY ===
       const employeeSummary = capRows.map((r) => {
         const vestYears = nz((r as any).total_vesting_months) / 12;
+        const monthsRemaining = Math.max(
+          0,
+          nz((r as any).remaining_vesting_months)
+        );
 
         return {
           Name: r.name ?? "",
@@ -246,12 +250,12 @@ export default function CapTable() {
           "Start Date": (r as any).vesting_start ?? "N/A",
           "Vesting Period (years)": f2(vestYears),
           "Cliff (months)": nz((r as any).cliff_months),
+          "Months Until Fully Vested": monthsRemaining, // <-- NEW COLUMN
           "Exercise Price ($)": (r as any).purchase_price ?? "N/A",
         };
       });
       const wsSummary = XLSX.utils.json_to_sheet(employeeSummary);
 
-      // Build workbook with ONLY this sheet
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, wsSummary, "Employee Summary");
       XLSX.writeFile(wb, "CapTable_Export.xlsx");
