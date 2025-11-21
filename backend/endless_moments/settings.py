@@ -86,17 +86,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'endless_moments.wsgi.application'
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://stockcompsystem.onrender.com",
-    "https://stockcompsystem-1.onrender.com"
-    
-]
+CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_CREDENTIALS = True  # ← allow cookies across origins
 
 # CSRF (needed when using cookies from a different origin)
