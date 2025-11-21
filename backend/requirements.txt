@@ -6,6 +6,7 @@ django-cors-headers==4.7.0
 psycopg2-binary==2.9.10
 gunicorn
 python-dotenv
+openai
 
 
 # 2FA stack
@@ -23,6 +24,7 @@ python-dateutil==2.9.0.post0
 six==1.17.0
 sqlparse==0.5.3
 tzdata==2025.2
+
 
 
 
