@@ -7,7 +7,7 @@ type Profile = { username?: string; name?: string; email?: string };
 
 // ---------- Config ----------
 const RAW_API =
-  (import.meta as any)?.env?.VITE_API_URL || "http://127.0.0.1:8000";
+  (import.meta as any)?.env?.VITE_API_URL || "https://stockcompsystem.onrender.com/api";
 const API = String(RAW_API).replace(/\/+$/, "");
 const PROFILE_PATH = "/accountInfo/";
 
