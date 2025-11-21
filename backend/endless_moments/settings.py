@@ -98,6 +98,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5174",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://stockcompsystem.onrender.com",
+    "https://stockcompsystem-1.onrender.com",
 ]
 
 # Database
