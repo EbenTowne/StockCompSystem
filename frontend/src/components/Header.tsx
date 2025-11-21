@@ -9,7 +9,7 @@ type Profile = { username?: string; name?: string; email?: string };
 const RAW_API =
   (import.meta as any)?.env?.VITE_API_URL || "http://127.0.0.1:8000";
 const API = String(RAW_API).replace(/\/+$/, "");
-const PROFILE_PATH = "/api/accountInfo/";
+const PROFILE_PATH = "/accountInfo/";
 
 // Keys your app might use for the access token
 const ACCESS_KEYS = ["accessToken", "access", "token", "jwt"];
