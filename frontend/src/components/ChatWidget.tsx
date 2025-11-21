@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 type Msg = { id: string; role: "user" | "assistant" | "system"; content: string };
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || "https://stockcompsystem.onrender.com/api";
 const CHAT_URL = `${API_BASE}/api/ai/employer-query/`;
 
 function getToken(): string | null {
