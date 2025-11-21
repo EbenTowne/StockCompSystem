@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-)ih^=)(a+_9*t$)&b!dh5e9p+%e$z&5x_7syeptk=8=7z7_5k$
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -93,6 +93,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5174",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://stockcompsystem.onrender.com"
 ]
 CORS_ALLOW_CREDENTIALS = True  # ← allow cookies across origins
 
@@ -112,14 +113,14 @@ CSRF_TRUSTED_ORIGINS = [
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "test_psql",
-        "USER": "postgres",
-        "PASSWORD": "endlessmoments",
-        "HOST": "database-2.cxkc2skuuz7g.us-east-2.rds.amazonaws.com",
-        "PORT": "5432",
+        "NAME": os.environ.get("POSTGRES_DB"),
+        "USER": os.environ.get("POSTGRES_USER"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD"),
+        "HOST": os.environ.get("POSTGRES_HOST"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         "OPTIONS": {
-            "sslmode": "require",         # RDS expects SSL
-            "connect_timeout": 10,        # fail fast if blocked
+            "sslmode": "require",
+            "connect_timeout": 10,
         },
     }
 }
