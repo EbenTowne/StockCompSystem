@@ -192,4 +192,4 @@ SIMPLE_JWT = {
 LOGIN_URL = 'two_factor:login'
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"  # or wherever you want after login
-FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
